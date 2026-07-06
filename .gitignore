@@ -1,0 +1,19 @@
+## .NET / Visual Studio
+bin/
+obj/
+publish/
+.vs/
+*.user
+*.suo
+*.userprefs
+*.cache
+
+## Rider
+.idea/
+
+## Build output
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.dll
+*.pdb
