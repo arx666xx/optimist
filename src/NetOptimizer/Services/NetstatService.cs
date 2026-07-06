@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.IO;
-using System.Net;
 using System.Text;
 using NetOptimizer.Models;
 
@@ -9,7 +7,8 @@ namespace NetOptimizer.Services;
 /// <summary>
 /// Enumerates active TCP/UDP connections using `netstat -ano`
 /// (rock-solid, no fragile struct marshalling) and enriches each
-/// row with the owning process name / path.
+/// row with the owning process name, icon, and a friendly description
+/// (product name, or the Windows service(s) hosted by svchost).
 /// </summary>
 public static class NetstatService
 {
@@ -25,11 +24,12 @@ public static class NetstatService
     public static List<ConnectionInfo> GetConnections()
     {
         var result = new List<ConnectionInfo>();
-        string output = RunNetstat();
+        string output = RunProcess("netstat", "-ano", Encoding.ASCII);
         if (string.IsNullOrWhiteSpace(output))
             return result;
 
         var procCache = BuildProcessCache();
+        var servicesByPid = GetServicesByPid();
 
         foreach (var raw in output.Split('\n'))
         {
@@ -68,6 +68,15 @@ public static class NetstatService
             string name = proc.Name ?? (pid == 0 ? "System Idle" : $"PID {pid}");
             string? path = proc.Path;
 
+            // Friendly description: hosted services (svchost) > product name > empty.
+            string description;
+            if (servicesByPid.TryGetValue(pid, out var svc) && !string.IsNullOrWhiteSpace(svc))
+                description = svc;
+            else if (!string.IsNullOrWhiteSpace(proc.FileDescription))
+                description = proc.FileDescription!;
+            else
+                description = "";
+
             var info = new ConnectionInfo
             {
                 Protocol = proto,
@@ -79,6 +88,8 @@ public static class NetstatService
                 Pid = pid,
                 ProcessName = name,
                 ProcessPath = path,
+                Description = description,
+                Icon = IconHelper.Get(path),
             };
             info.Suspicious = IsSuspicious(info);
             result.Add(info);
@@ -92,7 +103,6 @@ public static class NetstatService
 
     private static bool IsSuspicious(ConnectionInfo c)
     {
-        // Running from a temp / downloads location and talking to a remote host.
         if (!string.IsNullOrEmpty(c.ProcessPath))
         {
             string p = c.ProcessPath!.ToLowerInvariant();
@@ -100,7 +110,6 @@ public static class NetstatService
                 if (p.Contains(f)) return true;
         }
 
-        // Established connection to a public IP from an unnamed process.
         bool hasRemote = c.RemotePort > 0 && c.RemoteAddress != "*"
                          && c.RemoteAddress != "0.0.0.0" && c.RemoteAddress != "::";
         if (hasRemote && c.State.Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase)
@@ -122,7 +131,7 @@ public static class NetstatService
         return (addr, port);
     }
 
-    private readonly record struct ProcMeta(string? Name, string? Path);
+    private readonly record struct ProcMeta(string? Name, string? Path, string? FileDescription);
 
     private static Dictionary<int, ProcMeta> BuildProcessCache()
     {
@@ -132,8 +141,15 @@ public static class NetstatService
             try
             {
                 string? path = null;
-                try { path = p.MainModule?.FileName; } catch { /* protected process */ }
-                dict[p.Id] = new ProcMeta(p.ProcessName, path);
+                string? desc = null;
+                try
+                {
+                    path = p.MainModule?.FileName;
+                    if (!string.IsNullOrEmpty(path))
+                        desc = FileVersionInfo.GetVersionInfo(path).FileDescription;
+                }
+                catch { /* protected process */ }
+                dict[p.Id] = new ProcMeta(p.ProcessName, path, desc);
             }
             catch { /* process exited */ }
             finally { p.Dispose(); }
@@ -141,17 +157,60 @@ public static class NetstatService
         return dict;
     }
 
-    private static string RunNetstat()
+    /// <summary>Maps PID -> comma-separated Windows service names (mainly for svchost).</summary>
+    private static Dictionary<int, string> GetServicesByPid()
+    {
+        var map = new Dictionary<int, string>();
+        // /svc = show services, /fo csv = machine-readable, /nh = no header
+        string output = RunProcess("tasklist", "/svc /fo csv /nh", null);
+        if (string.IsNullOrWhiteSpace(output))
+            return map;
+
+        foreach (var raw in output.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+
+            var fields = ParseCsvLine(line);
+            if (fields.Count < 3) continue;
+            if (!int.TryParse(fields[1], out int pid)) continue;
+
+            string services = fields[2].Trim();
+            if (services.Length == 0 || services.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            map[pid] = services;
+        }
+        return map;
+    }
+
+    private static List<string> ParseCsvLine(string line)
+    {
+        var fields = new List<string>();
+        var sb = new StringBuilder();
+        bool inQuotes = false;
+        foreach (char ch in line)
+        {
+            if (ch == '"') inQuotes = !inQuotes;
+            else if (ch == ',' && !inQuotes) { fields.Add(sb.ToString()); sb.Clear(); }
+            else sb.Append(ch);
+        }
+        fields.Add(sb.ToString());
+        return fields;
+    }
+
+    private static string RunProcess(string file, string args, Encoding? encoding)
     {
         try
         {
-            var psi = new ProcessStartInfo("netstat", "-ano")
+            var psi = new ProcessStartInfo(file, args)
             {
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.ASCII,
             };
+            if (encoding != null) psi.StandardOutputEncoding = encoding;
+
             using var proc = Process.Start(psi);
             if (proc == null) return "";
             string output = proc.StandardOutput.ReadToEnd();

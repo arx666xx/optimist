@@ -26,9 +26,11 @@
             <CheckBox x:Name="HideLoopback" Content="Скрыть локальные" Margin="14,0,0,0" Click="Filter_Changed"/>
             <CheckBox x:Name="OnlyActive" Content="Только активные (ESTABLISHED)" Margin="14,0,0,0" Click="Filter_Changed"/>
             <CheckBox x:Name="OnlySuspicious" Content="Только подозрительные" Margin="14,0,0,0" Click="Filter_Changed"/>
+            <CheckBox x:Name="GroupByProcess" Content="Группировать по программе" Margin="14,0,0,0" Click="GroupBy_Changed"/>
 
             <Button Content="Обновить" DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource Btn}" Click="Refresh_Click"/>
             <CheckBox x:Name="AutoRefresh" Content="Авто-обновление" DockPanel.Dock="Right" Margin="8,0,0,0" IsChecked="True" Click="AutoRefresh_Changed"/>
+            <Button Content="🛠 Ремонт сети" DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource Btn}" Click="Repair_Click"/>
         </DockPanel>
 
         <!-- Grid -->
@@ -39,12 +41,24 @@
                   SelectionMode="Extended" GridLinesVisibility="Horizontal"
                   HeadersVisibility="Column">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Протокол" Binding="{Binding Protocol}" Width="80"/>
-                <DataGridTextColumn Header="Процесс" Binding="{Binding ProcessName}" Width="170"/>
-                <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="70"/>
-                <DataGridTextColumn Header="Локальный адрес" Binding="{Binding LocalEndpoint}" Width="190"/>
-                <DataGridTextColumn Header="Удалённый адрес" Binding="{Binding RemoteEndpoint}" Width="190"/>
-                <DataGridTextColumn Header="Хост (DNS)" Binding="{Binding RemoteHost}" Width="200"/>
+                <DataGridTextColumn Header="Протокол" Binding="{Binding Protocol}" Width="75"/>
+                <DataGridTemplateColumn Header="Процесс" Width="180">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" ToolTip="{Binding ProcessPath}">
+                                <Image Source="{Binding Icon}" Width="16" Height="16"
+                                       Margin="0,0,8,0" SnapsToDevicePixels="True"
+                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                <TextBlock Text="{Binding ProcessName}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Программа / сервис" Binding="{Binding Description}" Width="200"/>
+                <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="60"/>
+                <DataGridTextColumn Header="Локальный адрес" Binding="{Binding LocalEndpoint}" Width="175"/>
+                <DataGridTextColumn Header="Удалённый адрес" Binding="{Binding RemoteEndpoint}" Width="175"/>
+                <DataGridTextColumn Header="Хост (DNS)" Binding="{Binding RemoteHost}" Width="185"/>
                 <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="*"/>
             </DataGrid.Columns>
 
@@ -71,6 +85,35 @@
                     <MenuItem Header="📋  Копировать строку" Click="Copy_Click"/>
                 </ContextMenu>
             </DataGrid.ContextMenu>
+
+            <DataGrid.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.ContainerStyle>
+                        <Style TargetType="{x:Type GroupItem}">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="{x:Type GroupItem}">
+                                        <Expander IsExpanded="False" Margin="0,1"
+                                                  Background="{StaticResource PanelBrush2}"
+                                                  Foreground="{StaticResource FgBrush}"
+                                                  BorderBrush="{StaticResource BorderBrush2}"
+                                                  BorderThickness="0,0,0,1">
+                                            <Expander.Header>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold"/>
+                                                    <TextBlock Text="{Binding ItemCount, StringFormat=' — соединений: {0}'}"
+                                                               Foreground="{StaticResource MutedBrush}"/>
+                                                </StackPanel>
+                                            </Expander.Header>
+                                            <ItemsPresenter/>
+                                        </Expander>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </GroupStyle.ContainerStyle>
+                </GroupStyle>
+            </DataGrid.GroupStyle>
         </DataGrid>
 
         <!-- Status bar -->

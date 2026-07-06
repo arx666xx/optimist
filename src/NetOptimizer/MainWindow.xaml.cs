@@ -104,6 +104,7 @@ public partial class MainWindow : Window
         if (q.Length == 0) return true;
 
         return c.ProcessName.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || c.Description.Contains(q, StringComparison.OrdinalIgnoreCase)
             || c.LocalEndpoint.Contains(q, StringComparison.OrdinalIgnoreCase)
             || c.RemoteEndpoint.Contains(q, StringComparison.OrdinalIgnoreCase)
             || c.RemoteHost.Contains(q, StringComparison.OrdinalIgnoreCase)
@@ -121,6 +122,20 @@ public partial class MainWindow : Window
     {
         if (AutoRefresh.IsChecked == true) _timer.Start();
         else _timer.Stop();
+    }
+
+    private void GroupBy_Changed(object sender, RoutedEventArgs e)
+    {
+        _view.GroupDescriptions.Clear();
+        if (GroupByProcess.IsChecked == true)
+            _view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ConnectionInfo.ProcessName)));
+    }
+
+    private void Repair_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new RepairWindow { Owner = this };
+        win.ShowDialog();
+        Refresh();
     }
 
     // ---------------- Selection helpers ----------------

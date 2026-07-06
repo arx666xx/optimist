@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Media;
 
 namespace NetOptimizer.Models;
 
@@ -16,6 +17,12 @@ public class ConnectionInfo : INotifyPropertyChanged
     public int Pid { get; init; }
     public string ProcessName { get; init; } = "";
     public string? ProcessPath { get; init; }
+
+    /// <summary>Friendly description: product name, or hosted service(s) for svchost.</summary>
+    public string Description { get; init; } = "";
+
+    /// <summary>Small icon extracted from the executable (frozen, thread-safe).</summary>
+    public ImageSource? Icon { get; init; }
 
     public bool IsIPv6 => LocalAddress.Contains(':');
 
