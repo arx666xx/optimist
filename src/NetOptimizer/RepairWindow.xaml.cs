@@ -8,6 +8,7 @@ public partial class RepairWindow : Window
     public RepairWindow()
     {
         InitializeComponent();
+        SourceInitialized += (_, _) => ThemeHelper.EnableDarkTitleBar(this);
     }
 
     private async void RunAction(string confirmText, bool needsReboot, Func<string> action)

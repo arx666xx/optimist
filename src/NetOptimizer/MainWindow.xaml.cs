@@ -6,6 +6,8 @@ using System.Net;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using NetOptimizer.Models;
 using NetOptimizer.Services;
@@ -17,6 +19,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ConnectionInfo> _items = new();
     private readonly ICollectionView _view;
     private readonly DispatcherTimer _timer;
+    private readonly TrafficMonitor _traffic = new();
+    private UpdateService.UpdateInfo? _pendingUpdate;
     private bool _busy;
 
     public MainWindow()
@@ -32,9 +36,27 @@ public partial class MainWindow : Window
 
         Loaded += (_, _) =>
         {
+            _traffic.Start();
+            if (!_traffic.Available)
+                StatusText.Text = "Мониторинг трафика недоступен (запустите от администратора).";
             Refresh();
             _timer.Start();
+            _ = CheckForUpdatesAsync(silent: true);
         };
+
+        Closed += (_, _) => _traffic.Dispose();
+        SourceInitialized += (_, _) => ThemeHelper.EnableDarkTitleBar(this);
+    }
+
+    // Right-click selects the row under the cursor so context-menu actions have a target.
+    private void ConnGrid_RightClick(object sender, MouseButtonEventArgs e)
+    {
+        DependencyObject? dep = e.OriginalSource as DependencyObject;
+        while (dep != null && dep is not DataGridRow)
+            dep = VisualTreeHelper.GetParent(dep);
+
+        if (dep is DataGridRow row && !row.IsSelected)
+            ConnGrid.SelectedItem = row.Item;
     }
 
     // ---------------- Refresh ----------------
@@ -52,11 +74,23 @@ public partial class MainWindow : Window
         }).ContinueWith(t =>
         {
             Reconcile(t.Result);
+            ApplyRates();
             _busy = false;
             _view.Refresh();
             StatusText.Text = $"Обновлено: {DateTime.Now:HH:mm:ss}";
             CountText.Text = $"Показано: {_view.Cast<object>().Count()} из {_items.Count}";
         }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private void ApplyRates()
+    {
+        if (!_traffic.Available) return;
+        foreach (var c in _items)
+        {
+            var (down, up) = _traffic.GetRate(c.Pid);
+            c.DownloadRate = down;
+            c.UploadRate = up;
+        }
     }
 
     private void Reconcile(List<ConnectionInfo> incoming)
@@ -136,6 +170,65 @@ public partial class MainWindow : Window
         var win = new RepairWindow { Owner = this };
         win.ShowDialog();
         Refresh();
+    }
+
+    // ---------------- Updates ----------------
+
+    private async void Update_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pendingUpdate != null)
+        {
+            var res = MessageBox.Show(
+                $"Установить обновление до версии {_pendingUpdate.Version}?\n\n" +
+                "Приложение закроется, обновится и запустится заново.",
+                "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (res != MessageBoxResult.Yes) return;
+
+            try
+            {
+                StatusText.Text = "Загрузка обновления…";
+                BtnUpdate.IsEnabled = false;
+                await UpdateService.DownloadAndApplyAsync(_pendingUpdate);
+            }
+            catch (Exception ex)
+            {
+                BtnUpdate.IsEnabled = true;
+                MessageBox.Show("Не удалось обновиться: " + ex.Message,
+                    "NetOptimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        else
+        {
+            await CheckForUpdatesAsync(silent: false);
+        }
+    }
+
+    private async Task CheckForUpdatesAsync(bool silent)
+    {
+        try
+        {
+            var info = await UpdateService.CheckAsync();
+            if (info != null)
+            {
+                _pendingUpdate = info;
+                BtnUpdate.Content = $"⬇ Обновить до {info.Version}";
+                if (!silent)
+                    MessageBox.Show($"Доступна новая версия {info.Version}. Нажмите кнопку обновления, чтобы установить.",
+                        "Обновление", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else if (!silent)
+            {
+                MessageBox.Show($"У вас последняя версия ({UpdateService.CurrentVersion.ToString(3)}).",
+                    "Обновление", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!silent)
+                MessageBox.Show("Не удалось проверить обновления: " + ex.Message +
+                    "\n\nПроверьте, что в UpdateService указаны правильные логин и название репозитория, и что опубликован релиз.",
+                    "NetOptimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     // ---------------- Selection helpers ----------------

@@ -53,7 +53,34 @@ public class ConnectionInfo : INotifyPropertyChanged
         set { if (_suspicious != value) { _suspicious = value; OnChanged(); } }
     }
 
+    private double _downloadRate;
+    public double DownloadRate
+    {
+        get => _downloadRate;
+        set { if (Math.Abs(_downloadRate - value) > 0.5) { _downloadRate = value; Raise(nameof(DownloadRate)); Raise(nameof(DownloadRateText)); } }
+    }
+
+    private double _uploadRate;
+    public double UploadRate
+    {
+        get => _uploadRate;
+        set { if (Math.Abs(_uploadRate - value) > 0.5) { _uploadRate = value; Raise(nameof(UploadRate)); Raise(nameof(UploadRateText)); } }
+    }
+
+    public string DownloadRateText => FormatRate(_downloadRate);
+    public string UploadRateText => FormatRate(_uploadRate);
+
+    public static string FormatRate(double bytesPerSec)
+    {
+        if (bytesPerSec < 1) return "";
+        if (bytesPerSec < 1024) return $"{bytesPerSec:0} Б/с";
+        if (bytesPerSec < 1024 * 1024) return $"{bytesPerSec / 1024:0.0} КБ/с";
+        return $"{bytesPerSec / 1024 / 1024:0.00} МБ/с";
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnChanged([CallerMemberName] string? n = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
+    private void Raise(string n)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
 }

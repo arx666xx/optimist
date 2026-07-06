@@ -10,7 +10,7 @@
     <AssemblyName>NetOptimizer</AssemblyName>
     <RootNamespace>NetOptimizer</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.2.0</Version>
+    <Version>1.4.0</Version>
     <!-- Publish settings (used by `dotnet publish`) -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
@@ -19,5 +19,9 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.*" />
+  </ItemGroup>
 
 </Project>
