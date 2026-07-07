@@ -133,6 +133,8 @@ public static class NetstatService
 
     private readonly record struct ProcMeta(string? Name, string? Path, string? FileDescription);
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> DescCache = new();
+
     private static Dictionary<int, ProcMeta> BuildProcessCache()
     {
         var dict = new Dictionary<int, ProcMeta>();
@@ -146,7 +148,7 @@ public static class NetstatService
                 {
                     path = p.MainModule?.FileName;
                     if (!string.IsNullOrEmpty(path))
-                        desc = FileVersionInfo.GetVersionInfo(path).FileDescription;
+                        desc = DescCache.GetOrAdd(path, GetFileDescription);
                 }
                 catch { /* protected process */ }
                 dict[p.Id] = new ProcMeta(p.ProcessName, path, desc);
@@ -155,6 +157,12 @@ public static class NetstatService
             finally { p.Dispose(); }
         }
         return dict;
+    }
+
+    private static string? GetFileDescription(string path)
+    {
+        try { return FileVersionInfo.GetVersionInfo(path).FileDescription; }
+        catch { return null; }
     }
 
     /// <summary>Maps PID -> comma-separated Windows service names (mainly for svchost).</summary>

@@ -8,7 +8,7 @@ public partial class RepairWindow : Window
     public RepairWindow()
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => ThemeHelper.EnableDarkTitleBar(this);
+        SourceInitialized += (_, _) => ThemeHelper.SetTitleBar(this, ThemeService.Current == ThemeService.Dark);
     }
 
     private async void RunAction(string confirmText, bool needsReboot, Func<string> action)

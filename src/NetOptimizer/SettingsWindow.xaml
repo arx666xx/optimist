@@ -1,0 +1,50 @@
+<Window x:Class="NetOptimizer.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройки"
+        Height="360" Width="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource BgBrush}"
+        Foreground="{DynamicResource FgBrush}"
+        FontFamily="Segoe UI" FontSize="13">
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="⚙ Настройки" FontSize="18" FontWeight="Bold" Margin="0,0,0,16"/>
+
+        <!-- Theme -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,20">
+            <TextBlock Text="Тема оформления" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="BtnDark"  Content="🌙 Тёмная"  Style="{StaticResource TabBtn}" Tag="active"   Click="Dark_Click"/>
+                <Button x:Name="BtnLight" Content="☀ Светлая"  Style="{StaticResource TabBtn}" Tag="inactive" Margin="8,0,0,0" Click="Light_Click"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Danger zone -->
+        <Border Grid.Row="2" Background="{DynamicResource PanelBrush}" CornerRadius="10"
+                BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" Padding="14">
+            <StackPanel>
+                <TextBlock Text="Удаление программы" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}" Margin="0,0,0,6"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
+                           Text="Полностью удалит NetOptimizer с компьютера: сам файл программы, вспомогательные файлы и сохранённые настройки. Действие необратимо."/>
+                <Button x:Name="BtnUninstall" Content="🗑 Удалить программу с компьютера"
+                        HorizontalAlignment="Left" Style="{StaticResource Btn}" Click="Uninstall_Click"/>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="3" x:Name="Hint" VerticalAlignment="Bottom" Foreground="{DynamicResource MutedBrush}"/>
+
+        <DockPanel Grid.Row="4" Margin="0,12,0,0" LastChildFill="False">
+            <Button Content="Закрыть" DockPanel.Dock="Right" Style="{StaticResource Btn}" Click="Close_Click"/>
+        </DockPanel>
+    </Grid>
+</Window>

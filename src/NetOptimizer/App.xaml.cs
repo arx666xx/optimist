@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using NetOptimizer.Services;
 
 namespace NetOptimizer;
 
@@ -8,6 +9,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        ThemeService.Apply(SettingsService.LoadTheme());
         DispatcherUnhandledException += OnUnhandled;
     }
 

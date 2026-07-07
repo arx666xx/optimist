@@ -17,10 +17,14 @@ namespace NetOptimizer;
 public partial class MainWindow : Window
 {
     private readonly ObservableCollection<ConnectionInfo> _items = new();
-    private readonly ICollectionView _view;
+    private readonly ObservableCollection<LogEntry> _logItems = new();
+    private ICollectionView _view = null!;
+    private ICollectionView _logView = null!;
     private readonly DispatcherTimer _timer;
     private readonly TrafficMonitor _traffic = new();
     private UpdateService.UpdateInfo? _pendingUpdate;
+    private string _logName = "System";
+    private bool _logLoaded;
     private bool _busy;
 
     public MainWindow()
@@ -30,6 +34,10 @@ public partial class MainWindow : Window
         ConnGrid.ItemsSource = _items;
         _view = CollectionViewSource.GetDefaultView(_items);
         _view.Filter = FilterPredicate;
+
+        LogGrid.ItemsSource = _logItems;
+        _logView = CollectionViewSource.GetDefaultView(_logItems);
+        _logView.Filter = LogFilter;
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _timer.Tick += (_, _) => Refresh();
@@ -45,7 +53,13 @@ public partial class MainWindow : Window
         };
 
         Closed += (_, _) => _traffic.Dispose();
-        SourceInitialized += (_, _) => ThemeHelper.EnableDarkTitleBar(this);
+        SourceInitialized += (_, _) => ThemeHelper.SetTitleBar(this, ThemeService.Current == ThemeService.Dark);
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new SettingsWindow { Owner = this };
+        win.ShowDialog();
     }
 
     // Right-click selects the row under the cursor so context-menu actions have a target.
@@ -95,12 +109,17 @@ public partial class MainWindow : Window
 
     private void Reconcile(List<ConnectionInfo> incoming)
     {
-        var existing = _items.ToDictionary(x => x.Key);
+        // Build lookup tolerant of duplicate keys (last wins) — ToDictionary would throw.
+        var existing = new Dictionary<string, ConnectionInfo>();
+        foreach (var it in _items)
+            existing[it.Key] = it;
+
         var seen = new HashSet<string>();
 
         foreach (var c in incoming)
         {
-            seen.Add(c.Key);
+            if (!seen.Add(c.Key)) continue; // ignore duplicate rows in this batch
+
             if (existing.TryGetValue(c.Key, out var e))
             {
                 e.State = c.State;           // update mutable fields in place
@@ -109,6 +128,7 @@ public partial class MainWindow : Window
             else
             {
                 _items.Add(c);
+                existing[c.Key] = c;
             }
         }
 
@@ -170,6 +190,90 @@ public partial class MainWindow : Window
         var win = new RepairWindow { Owner = this };
         win.ShowDialog();
         Refresh();
+    }
+
+    private void Boost_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new BoostWindow(_items.ToList()) { Owner = this };
+        win.ShowDialog();
+        Refresh();
+    }
+
+    // ---------------- View switching (tabs) ----------------
+
+    private void ShowConnections_Click(object sender, RoutedEventArgs e) => SwitchView(showLog: false);
+
+    private void ShowLog_Click(object sender, RoutedEventArgs e)
+    {
+        SwitchView(showLog: true);
+        if (!_logLoaded) LoadLog();
+    }
+
+    private void SwitchView(bool showLog)
+    {
+        ConnectionsView.Visibility = showLog ? Visibility.Collapsed : Visibility.Visible;
+        LogView.Visibility = showLog ? Visibility.Visible : Visibility.Collapsed;
+        BtnViewConn.Tag = showLog ? "inactive" : "active";
+        BtnViewLog.Tag = showLog ? "active" : "inactive";
+    }
+
+    // ---------------- Windows event log ----------------
+
+    private void LogSource_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.Tag is string s)
+        {
+            _logName = s;
+            UpdateLogSourceButtons();
+            LoadLog();
+        }
+    }
+
+    private void UpdateLogSourceButtons()
+    {
+        BtnLogSystem.Tag = _logName == "System" ? "active" : "inactive";
+        BtnLogApp.Tag = _logName == "Application" ? "active" : "inactive";
+        BtnLogSecurity.Tag = _logName == "Security" ? "active" : "inactive";
+    }
+
+    private void RefreshLog_Click(object sender, RoutedEventArgs e) => LoadLog();
+    private void LogOnlyErrors_Changed(object sender, RoutedEventArgs e) => LoadLog();
+    private void LogSearch_TextChanged(object sender, TextChangedEventArgs e) => _logView?.Refresh();
+
+    private void LoadLog()
+    {
+        _logLoaded = true;
+        LogStatus.Text = "Чтение журнала…";
+        bool onlyErrors = LogOnlyErrors.IsChecked == true;
+        string logName = _logName;
+
+        Task.Run(() => WindowsLogService.Read(logName, onlyErrors, 500))
+            .ContinueWith(t =>
+            {
+                _logItems.Clear();
+                foreach (var it in t.Result) _logItems.Add(it);
+                _logView.Refresh();
+                LogStatus.Text = $"Записей: {_logItems.Count} · журнал: {LogDisplayName(logName)} · обновлено {DateTime.Now:HH:mm:ss}";
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private static string LogDisplayName(string name) => name switch
+    {
+        "System" => "Система",
+        "Application" => "Приложения",
+        "Security" => "Безопасность",
+        _ => name
+    };
+
+    private bool LogFilter(object obj)
+    {
+        if (obj is not LogEntry l) return false;
+        string q = LogSearch.Text?.Trim() ?? "";
+        if (q.Length == 0) return true;
+        return l.Source.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || l.Message.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || l.Level.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || l.EventId.ToString().Contains(q);
     }
 
     // ---------------- Updates ----------------

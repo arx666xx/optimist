@@ -1,0 +1,19 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="BgBrush"        Color="#FFF4F5F7"/>
+    <SolidColorBrush x:Key="PanelBrush"     Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="PanelBrush2"    Color="#FFEAECEF"/>
+    <SolidColorBrush x:Key="MenuBrush"      Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="AltRowBrush"    Color="#FFF7F8FA"/>
+    <SolidColorBrush x:Key="FgBrush"        Color="#FF1B1D22"/>
+    <SolidColorBrush x:Key="MutedBrush"     Color="#FF6B7280"/>
+    <SolidColorBrush x:Key="AccentBrush"    Color="#FF2F6FED"/>
+    <SolidColorBrush x:Key="AccentSoft"     Color="#FFD6E4FF"/>
+    <SolidColorBrush x:Key="DangerBrush"    Color="#FFD64545"/>
+    <SolidColorBrush x:Key="SuspiciousBg"   Color="#33E06A6A"/>
+    <SolidColorBrush x:Key="BorderBrush2"   Color="#FFD5D9E0"/>
+    <SolidColorBrush x:Key="HoverBrush"     Color="#FFEEF1F5"/>
+    <SolidColorBrush x:Key="SelectionBrush" Color="#FFCFE0FF"/>
+    <SolidColorBrush x:Key="ScrollThumb"    Color="#FFC2C7D0"/>
+    <SolidColorBrush x:Key="ScrollThumbHi"  Color="#FFA6ACB8"/>
+</ResourceDictionary>
