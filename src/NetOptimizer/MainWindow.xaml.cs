@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -56,10 +57,87 @@ public partial class MainWindow : Window
         SourceInitialized += (_, _) => ThemeHelper.SetTitleBar(this, ThemeService.Current == ThemeService.Dark);
     }
 
+    private bool _settingsOpen;
+
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        var win = new SettingsWindow { Owner = this };
-        win.ShowDialog();
+        if (_settingsOpen) CloseSettings();
+        else OpenSettings();
+    }
+
+    private void OpenSettings()
+    {
+        UpdateThemeButtons();
+        UpdateTimerButtons();
+        SettingsOverlay.Visibility = Visibility.Visible;
+        var anim = new System.Windows.Media.Animation.DoubleAnimation(-340, 0, TimeSpan.FromMilliseconds(190))
+        {
+            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+        };
+        SettingsSlide.BeginAnimation(TranslateTransform.XProperty, anim);
+        _settingsOpen = true;
+    }
+
+    private void CloseSettings()
+    {
+        var anim = new System.Windows.Media.Animation.DoubleAnimation(0, -340, TimeSpan.FromMilliseconds(160))
+        {
+            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseIn }
+        };
+        anim.Completed += (_, _) => SettingsOverlay.Visibility = Visibility.Collapsed;
+        SettingsSlide.BeginAnimation(TranslateTransform.XProperty, anim);
+        _settingsOpen = false;
+    }
+
+    private void CloseSettings_Click(object sender, RoutedEventArgs e) => CloseSettings();
+    private void SettingsScrim_Click(object sender, MouseButtonEventArgs e) => CloseSettings();
+
+    private void UpdateThemeButtons()
+    {
+        bool dark = ThemeService.Current == ThemeService.Dark;
+        BtnDark.Tag = dark ? "active" : "inactive";
+        BtnLight.Tag = dark ? "inactive" : "active";
+    }
+
+    private void Dark_Click(object sender, RoutedEventArgs e) => SetTheme(ThemeService.Dark);
+    private void Light_Click(object sender, RoutedEventArgs e) => SetTheme(ThemeService.Light);
+
+    private void SetTheme(string theme)
+    {
+        ThemeService.Apply(theme);
+        SettingsService.SaveTheme(theme);
+        UpdateThemeButtons();
+    }
+
+    private void Timer_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.CommandParameter is string s && int.TryParse(s, out var sec))
+        {
+            SettingsService.SaveRebootDelaySeconds(sec);
+            UpdateTimerButtons();
+        }
+    }
+
+    private void UpdateTimerButtons()
+    {
+        int cur = SettingsService.LoadRebootDelaySeconds();
+        foreach (var child in TimerPanel.Children)
+            if (child is Button b && b.CommandParameter is string s && int.TryParse(s, out var sec))
+                b.Tag = sec == cur ? "active" : "inactive";
+    }
+
+    private void Uninstall_Click(object sender, RoutedEventArgs e)
+    {
+        var res = MessageBox.Show(
+            "Удалить NetOptimizer с компьютера?\n\n" +
+            "Будут удалены файл программы, вспомогательные файлы и настройки. " +
+            "Приложение закроется. Действие необратимо.",
+            "Удаление программы", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (res != MessageBoxResult.Yes) return;
+
+        if (MessageBox.Show("Точно удалить? Отменить будет нельзя.", "Подтверждение",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+            SettingsService.Uninstall();
     }
 
     // Right-click selects the row under the cursor so context-menu actions have a target.
@@ -453,5 +531,142 @@ public partial class MainWindow : Window
             StatusText.Text = "Строка скопирована.";
         }
         catch { /* clipboard busy */ }
+    }
+
+    // ---------------- Export ----------------
+
+    private void Export_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "CSV (*.csv)|*.csv|JSON (*.json)|*.json",
+            FileName = $"netoptimizer_{DateTime.Now:yyyyMMdd_HHmmss}"
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        var items = _view.Cast<ConnectionInfo>().ToList();
+        try
+        {
+            if (dlg.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                ExportService.ToJson(items, dlg.FileName);
+            else
+                ExportService.ToCsv(items, dlg.FileName);
+            StatusText.Text = $"Экспортировано строк: {items.Count} → {dlg.FileName}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Не удалось экспортировать: " + ex.Message,
+                "NetOptimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    // ---------------- GeoIP ----------------
+
+    private async void GeoIp_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var c in SelectedMany)
+        {
+            if (c.RemotePort == 0 || string.IsNullOrEmpty(c.RemoteAddress) ||
+                c.RemoteAddress is "*" or "0.0.0.0" or "::")
+                continue;
+            try { c.Country = await GeoIpService.LookupAsync(c.RemoteAddress); }
+            catch { /* lookup failed */ }
+        }
+    }
+
+    // ---------------- Whitelist ----------------
+
+    private void Trust_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var n in SelectedMany.Select(c => c.ProcessName).Distinct())
+            SettingsService.AddTrusted(n);
+        StatusText.Text = "Добавлено в доверенные (не помечать подозрительными).";
+        Refresh();
+    }
+
+    private void Untrust_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var n in SelectedMany.Select(c => c.ProcessName).Distinct())
+            SettingsService.RemoveTrusted(n);
+        StatusText.Text = "Убрано из доверенных.";
+        Refresh();
+    }
+
+    // ---------------- Column customization ----------------
+
+    private void Columns_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu();
+        foreach (var col in ConnGrid.Columns)
+        {
+            string label = col.Header?.ToString() ?? "—";
+            var item = new MenuItem { Header = Glyph(col) + label, StaysOpenOnClick = true };
+            var c = col;
+            var mi = item;
+            item.Click += (_, _) =>
+            {
+                c.Visibility = c.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+                mi.Header = Glyph(c) + label;
+            };
+            menu.Items.Add(item);
+        }
+        if (sender is UIElement el)
+        {
+            menu.PlacementTarget = el;
+            menu.IsOpen = true;
+        }
+    }
+
+    private static string Glyph(DataGridColumn c) =>
+        c.Visibility == Visibility.Visible ? "☑  " : "☐  ";
+
+    // ---------------- Keyboard shortcuts ----------------
+
+    private void ConnGrid_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.C && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            CopySelected();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete)
+        {
+            CloseSelectedConnections();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Space)
+        {
+            foreach (var c in SelectedMany.Select(x => x.Pid).Distinct())
+                ProcessActions.Suspend(c);
+            StatusText.Text = "Выбранные процессы приостановлены (возобновить — в меню).";
+            e.Handled = true;
+        }
+    }
+
+    private void CopySelected()
+    {
+        var rows = SelectedMany;
+        if (rows.Count == 0) return;
+        var sb = new StringBuilder();
+        sb.AppendLine("Протокол\tПроцесс\tPID\tЛокальный\tУдалённый\tХост\tСтрана\tСостояние");
+        foreach (var c in rows)
+            sb.AppendLine($"{c.Protocol}\t{c.ProcessName}\t{c.Pid}\t{c.LocalEndpoint}\t{c.RemoteEndpoint}\t{c.RemoteHost}\t{c.Country}\t{c.State}");
+        try
+        {
+            Clipboard.SetText(sb.ToString());
+            StatusText.Text = $"Скопировано строк: {rows.Count}";
+        }
+        catch { /* clipboard busy */ }
+    }
+
+    private void CloseSelectedConnections()
+    {
+        var rows = SelectedMany.Where(c => c.Protocol == "TCP" && !c.IsIPv6).ToList();
+        if (rows.Count == 0) return;
+        int closed = 0;
+        foreach (var c in rows)
+            if (ProcessActions.CloseConnection(c).Ok) closed++;
+        StatusText.Text = $"Закрыто соединений: {closed}";
+        Refresh();
     }
 }

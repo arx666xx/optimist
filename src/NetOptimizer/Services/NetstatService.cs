@@ -90,6 +90,7 @@ public static class NetstatService
                 ProcessPath = path,
                 Description = description,
                 Icon = IconHelper.Get(path),
+                Signature = SignatureService.Get(path),
             };
             info.Suspicious = IsSuspicious(info);
             result.Add(info);
@@ -103,6 +104,10 @@ public static class NetstatService
 
     private static bool IsSuspicious(ConnectionInfo c)
     {
+        // Trusted processes are never flagged.
+        if (SettingsService.IsTrusted(c.ProcessName))
+            return false;
+
         if (!string.IsNullOrEmpty(c.ProcessPath))
         {
             string p = c.ProcessPath!.ToLowerInvariant();

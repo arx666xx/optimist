@@ -24,6 +24,9 @@ public class ConnectionInfo : INotifyPropertyChanged
     /// <summary>Small icon extracted from the executable (frozen, thread-safe).</summary>
     public ImageSource? Icon { get; init; }
 
+    /// <summary>Authenticode signature status: "Подписан" / "Не подписан" / "".</summary>
+    public string Signature { get; init; } = "";
+
     public bool IsIPv6 => LocalAddress.Contains(':');
 
     // Stable identity across refreshes.
@@ -44,6 +47,13 @@ public class ConnectionInfo : INotifyPropertyChanged
     {
         get => _remoteHost;
         set { if (_remoteHost != value) { _remoteHost = value; OnChanged(); } }
+    }
+
+    private string _country = "";
+    public string Country
+    {
+        get => _country;
+        set { if (_country != value) { _country = value; OnChanged(); } }
     }
 
     private bool _suspicious;

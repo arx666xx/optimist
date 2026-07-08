@@ -49,6 +49,8 @@
                     <Button Content="Обновить" DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource Btn}" Click="Refresh_Click"/>
                     <CheckBox x:Name="AutoRefresh" Content="Авто" DockPanel.Dock="Right" Margin="8,0,0,0" IsChecked="True" Click="AutoRefresh_Changed" VerticalAlignment="Center"/>
                     <Button x:Name="BtnUpdate" Content="Обновления" DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource Btn}" Click="Update_Click"/>
+                    <Button Content="👁 Столбцы" DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource Btn}" Click="Columns_Click"/>
+                    <Button Content="💾 Экспорт" DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource Btn}" Click="Export_Click"/>
                     <Button Content="🛠 Ремонт сети" DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource Btn}" Click="Repair_Click"/>
                     <Button Content="🚀 Ускорить" DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource Btn}" Click="Boost_Click"/>
                 </DockPanel>
@@ -60,7 +62,8 @@
                       CanUserAddRows="False" CanUserResizeRows="False"
                       SelectionMode="Extended" GridLinesVisibility="Horizontal"
                       HeadersVisibility="Column"
-                      PreviewMouseRightButtonDown="ConnGrid_RightClick">
+                      PreviewMouseRightButtonDown="ConnGrid_RightClick"
+                      PreviewKeyDown="ConnGrid_KeyDown">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Протокол" Binding="{Binding Protocol}" Width="75"/>
                     <DataGridTemplateColumn Header="Процесс" Width="180">
@@ -76,12 +79,14 @@
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Программа / сервис" Binding="{Binding Description}" Width="180"/>
-                    <DataGridTextColumn Header="↓ Приём" Binding="{Binding DownloadRateText}" Width="90"/>
-                    <DataGridTextColumn Header="↑ Отдача" Binding="{Binding UploadRateText}" Width="90"/>
+                    <DataGridTextColumn Header="↓ Приём" Binding="{Binding DownloadRateText}" SortMemberPath="DownloadRate" Width="90"/>
+                    <DataGridTextColumn Header="↑ Отдача" Binding="{Binding UploadRateText}" SortMemberPath="UploadRate" Width="90"/>
                     <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="60"/>
                     <DataGridTextColumn Header="Локальный адрес" Binding="{Binding LocalEndpoint}" Width="160"/>
                     <DataGridTextColumn Header="Удалённый адрес" Binding="{Binding RemoteEndpoint}" Width="160"/>
-                    <DataGridTextColumn Header="Хост (DNS)" Binding="{Binding RemoteHost}" Width="160"/>
+                    <DataGridTextColumn Header="Хост (DNS)" Binding="{Binding RemoteHost}" Width="150"/>
+                    <DataGridTextColumn Header="Страна" Binding="{Binding Country}" Width="140"/>
+                    <DataGridTextColumn Header="Подпись" Binding="{Binding Signature}" Width="100"/>
                     <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="*"/>
                 </DataGrid.Columns>
 
@@ -104,6 +109,9 @@
                         <MenuItem Header="🛡  Разблокировать в брандмауэре" Click="Unblock_Click"/>
                         <Separator/>
                         <MenuItem Header="🌐  Определить хост (обратный DNS)" Click="Resolve_Click"/>
+                        <MenuItem Header="🌍  Определить страну (GeoIP)" Click="GeoIp_Click"/>
+                        <MenuItem Header="⭐  Добавить процесс в доверенные" Click="Trust_Click"/>
+                        <MenuItem Header="☆  Убрать из доверенных" Click="Untrust_Click"/>
                         <MenuItem Header="📁  Открыть расположение файла" Click="OpenLocation_Click"/>
                         <MenuItem Header="📋  Копировать строку" Click="Copy_Click"/>
                     </ContextMenu>
@@ -208,6 +216,55 @@
             <DockPanel Grid.Row="2" Margin="2,8,2,0" LastChildFill="False">
                 <TextBlock x:Name="LogStatus" Text="Откройте вкладку, чтобы загрузить журнал." Foreground="{DynamicResource MutedBrush}"/>
             </DockPanel>
+        </Grid>
+
+        <!-- ============ SETTINGS SLIDE-OUT PANEL ============ -->
+        <Grid x:Name="SettingsOverlay" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed" Panel.ZIndex="50">
+            <Border Background="#99000000" MouseLeftButtonDown="SettingsScrim_Click"/>
+            <Border Width="340" HorizontalAlignment="Left"
+                    Background="{DynamicResource BgBrush}"
+                    BorderBrush="{DynamicResource BorderBrush2}" BorderThickness="0,0,1,0">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="SettingsSlide" X="-340"/>
+                </Border.RenderTransform>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="18">
+                        <DockPanel Margin="0,0,0,18" LastChildFill="False">
+                            <TextBlock Text="⚙ Настройки" FontSize="18" FontWeight="Bold" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+                            <Button Content="✕" DockPanel.Dock="Right" Style="{StaticResource TabBtn}" Click="CloseSettings_Click"/>
+                        </DockPanel>
+
+                        <TextBlock Text="Тема оформления" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,22">
+                            <Button x:Name="BtnDark"  Content="🌙 Тёмная"  Style="{StaticResource TabBtn}" Tag="active"   Click="Dark_Click"/>
+                            <Button x:Name="BtnLight" Content="☀ Светлая"  Style="{StaticResource TabBtn}" Tag="inactive" Margin="8,0,0,0" Click="Light_Click"/>
+                        </StackPanel>
+
+                        <TextBlock Text="Таймер автоперезагрузки" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
+                                   Text="После действий, требующих перезагрузки (сброс Winsock/TCP-IP). При «0 сек» перезагрузка не запускается сама — программа спросит с кнопками «Перезагрузить» и «Отмена»."/>
+                        <WrapPanel x:Name="TimerPanel" Margin="0,0,0,22">
+                            <Button Content="5 мин" CommandParameter="300" Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,6,6" Click="Timer_Click"/>
+                            <Button Content="4 мин" CommandParameter="240" Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,6,6" Click="Timer_Click"/>
+                            <Button Content="3 мин" CommandParameter="180" Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,6,6" Click="Timer_Click"/>
+                            <Button Content="2 мин" CommandParameter="120" Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,6,6" Click="Timer_Click"/>
+                            <Button Content="1 мин" CommandParameter="60"  Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,6,6" Click="Timer_Click"/>
+                            <Button Content="0 сек" CommandParameter="0"   Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,6,6" Click="Timer_Click"/>
+                        </WrapPanel>
+
+                        <Border Background="{DynamicResource PanelBrush}" CornerRadius="10"
+                                BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" Padding="14">
+                            <StackPanel>
+                                <TextBlock Text="Удаление программы" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}" Margin="0,0,0,6"/>
+                                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
+                                           Text="Полностью удалит NetOptimizer с компьютера: файл программы, вспомогательные файлы и настройки. Необратимо."/>
+                                <Button x:Name="BtnUninstall" Content="🗑 Удалить программу"
+                                        HorizontalAlignment="Left" Style="{StaticResource Btn}" Click="Uninstall_Click"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
         </Grid>
     </Grid>
 </Window>

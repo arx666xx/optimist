@@ -10,7 +10,7 @@
     <AssemblyName>NetOptimizer</AssemblyName>
     <RootNamespace>NetOptimizer</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.6.0</Version>
+    <Version>1.7.0</Version>
     <!-- Publish settings (used by `dotnet publish`) -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>

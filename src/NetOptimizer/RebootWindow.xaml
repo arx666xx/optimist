@@ -1,0 +1,28 @@
+<Window x:Class="NetOptimizer.RebootWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Перезагрузка"
+        Height="210" Width="440"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource BgBrush}"
+        Foreground="{DynamicResource FgBrush}"
+        FontFamily="Segoe UI" FontSize="13">
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="16" FontWeight="Bold" Margin="0,0,0,10"/>
+        <TextBlock x:Name="MsgText" Grid.Row="1" TextWrapping="Wrap" VerticalAlignment="Top"
+                   Foreground="{DynamicResource MutedBrush}"/>
+
+        <DockPanel Grid.Row="2" LastChildFill="False" Margin="0,12,0,0">
+            <Button x:Name="BtnCancel" Content="Отмена" DockPanel.Dock="Right" Style="{StaticResource Btn}" Margin="8,0,0,0" Click="Cancel_Click"/>
+            <Button x:Name="BtnReboot" Content="Перезагрузить сейчас" DockPanel.Dock="Right" Style="{StaticResource Btn}" Click="Reboot_Click"/>
+        </DockPanel>
+    </Grid>
+</Window>

@@ -29,12 +29,15 @@ public partial class RepairWindow : Window
 
         SetBusy(false);
         Hint.Text = needsReboot
-            ? "Готово. Для применения изменений перезагрузите компьютер."
+            ? "Готово. Требуется перезагрузка."
             : "Готово.";
 
         if (needsReboot)
-            MessageBox.Show("Операция выполнена.\n\nЧтобы изменения вступили в силу, перезагрузите компьютер.",
-                "NetOptimizer", MessageBoxButton.OK, MessageBoxImage.Information);
+        {
+            int delay = SettingsService.LoadRebootDelaySeconds();
+            var w = new RebootWindow(delay) { Owner = this };
+            w.ShowDialog();
+        }
     }
 
     private void SetBusy(bool busy)
