@@ -153,6 +153,8 @@ public static class FirewallService
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                StandardOutputEncoding = ConsoleText.Oem,
+                StandardErrorEncoding = ConsoleText.Oem,
             };
             using var p = Process.Start(psi)!;
             string err = p.StandardError.ReadToEnd();

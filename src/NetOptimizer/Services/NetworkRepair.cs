@@ -21,7 +21,8 @@ public static class NetworkRepair
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
+                StandardOutputEncoding = ConsoleText.Oem,
+                StandardErrorEncoding = ConsoleText.Oem,
             };
             using var p = Process.Start(psi);
             if (p == null) return $"> {file} {args}\nНе удалось запустить команду.\n";

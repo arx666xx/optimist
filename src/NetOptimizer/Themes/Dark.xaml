@@ -1,19 +1,48 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <SolidColorBrush x:Key="BgBrush"        Color="#FF15161A"/>
-    <SolidColorBrush x:Key="PanelBrush"     Color="#FF1E1F24"/>
-    <SolidColorBrush x:Key="PanelBrush2"    Color="#FF262830"/>
-    <SolidColorBrush x:Key="MenuBrush"      Color="#FF23242A"/>
-    <SolidColorBrush x:Key="AltRowBrush"    Color="#FF1A1B20"/>
-    <SolidColorBrush x:Key="FgBrush"        Color="#FFECEDEF"/>
-    <SolidColorBrush x:Key="MutedBrush"     Color="#FF8B9099"/>
-    <SolidColorBrush x:Key="AccentBrush"    Color="#FF5B9DFF"/>
-    <SolidColorBrush x:Key="AccentSoft"     Color="#FF2E4372"/>
-    <SolidColorBrush x:Key="DangerBrush"    Color="#FFFF6B6B"/>
-    <SolidColorBrush x:Key="SuspiciousBg"   Color="#66402226"/>
-    <SolidColorBrush x:Key="BorderBrush2"   Color="#FF313339"/>
-    <SolidColorBrush x:Key="HoverBrush"     Color="#FF262832"/>
-    <SolidColorBrush x:Key="SelectionBrush" Color="#FF33518A"/>
-    <SolidColorBrush x:Key="ScrollThumb"    Color="#FF45474F"/>
-    <SolidColorBrush x:Key="ScrollThumbHi"  Color="#FF5A5D66"/>
+
+    <!-- Deep, slightly blue-shifted near-black with a single electric-cyan accent. -->
+    <SolidColorBrush x:Key="BgBrush"        Color="#FF07080C"/>
+    <SolidColorBrush x:Key="PanelBrush"     Color="#FF0D0F16"/>
+    <SolidColorBrush x:Key="PanelBrush2"    Color="#FF13161F"/>
+    <SolidColorBrush x:Key="SurfaceBrush"   Color="#FF10131B"/>
+    <SolidColorBrush x:Key="MenuBrush"      Color="#FF11141C"/>
+    <SolidColorBrush x:Key="AltRowBrush"    Color="#00000000"/>
+
+    <SolidColorBrush x:Key="FgBrush"        Color="#FFE8ECF5"/>
+    <SolidColorBrush x:Key="MutedBrush"     Color="#FF6B7791"/>
+    <SolidColorBrush x:Key="FaintBrush"     Color="#FF404B60"/>
+
+    <SolidColorBrush x:Key="AccentBrush"    Color="#FF3DDCFF"/>
+    <SolidColorBrush x:Key="AccentBrush2"   Color="#FF7C6BFF"/>
+    <SolidColorBrush x:Key="AccentSoft"     Color="#2E3DDCFF"/>
+    <SolidColorBrush x:Key="AccentInk"      Color="#FF05202A"/>
+
+    <SolidColorBrush x:Key="DangerBrush"    Color="#FFFF4D6D"/>
+    <SolidColorBrush x:Key="WarnBrush"      Color="#FFFFC46B"/>
+    <SolidColorBrush x:Key="OkBrush"        Color="#FF4DE8A5"/>
+    <SolidColorBrush x:Key="SuspiciousBg"   Color="#26FF4D6D"/>
+
+    <SolidColorBrush x:Key="BorderBrush2"   Color="#FF1B1F2C"/>
+    <SolidColorBrush x:Key="GridLineBrush"  Color="#FF13161F"/>
+    <SolidColorBrush x:Key="HoverBrush"     Color="#FF141824"/>
+    <SolidColorBrush x:Key="SelectionBrush" Color="#333DDCFF"/>
+    <SolidColorBrush x:Key="ScrollThumb"    Color="#FF242A3A"/>
+    <SolidColorBrush x:Key="ScrollThumbHi"  Color="#FF3DDCFF"/>
+
+    <!-- Faint top-lit wash so the window does not read as a flat rectangle. -->
+    <LinearGradientBrush x:Key="WindowBg" StartPoint="0,0" EndPoint="0.35,1">
+        <GradientStop Color="#FF0B0E17" Offset="0"/>
+        <GradientStop Color="#FF07080C" Offset="0.55"/>
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FF3DDCFF" Offset="0"/>
+        <GradientStop Color="#FF7C6BFF" Offset="1"/>
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="HairlineBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#FF3DDCFF" Offset="0"/>
+        <GradientStop Color="#003DDCFF" Offset="1"/>
+    </LinearGradientBrush>
 </ResourceDictionary>

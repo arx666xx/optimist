@@ -2,13 +2,14 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Ремонт сети"
-        Height="640" Width="720"
+        Height="680" Width="760"
         WindowStartupLocation="CenterOwner"
-        Background="{DynamicResource BgBrush}"
+        Background="{DynamicResource WindowBg}"
         Foreground="{DynamicResource FgBrush}"
-        FontFamily="Segoe UI" FontSize="13">
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+        UseLayoutRounding="True">
 
-    <Grid Margin="16">
+    <Grid Margin="22,20,22,18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -17,45 +18,64 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="🛠 Ремонт сетевых настроек" FontSize="18" FontWeight="Bold" Margin="0,0,0,4"/>
-        <TextBlock Grid.Row="1" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,14"
-                   Text="Стандартные средства Windows для восстановления соединения после VPN. Если интернет есть, но игры (Steam) и часть программ выдают ошибки — начните со «Сброса Winsock». После сброса Winsock и TCP/IP нужна перезагрузка."/>
+        <TextBlock Grid.Row="0" Text="Ремонт сетевых настроек" Style="{StaticResource H1}" Margin="0,0,0,6"/>
+        <TextBlock Grid.Row="1" TextWrapping="Wrap" Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,18"
+                   Text="Стандартные средства Windows для восстановления соединения после VPN. Если интернет есть, но игры и часть программ выдают ошибки — начните со сброса Winsock. После сброса Winsock и TCP/IP нужна перезагрузка."/>
 
-        <!-- Steam fix (label + button, no box) -->
-        <StackPanel Grid.Row="2" Margin="0,0,0,16">
-            <TextBlock Text="Проблема с играми / Steam (ошибки при рабочем интернете):" FontWeight="SemiBold" Margin="0,0,0,8"/>
-            <Button x:Name="BtnSteamFix" Content="Исправить — сброс Winsock *" HorizontalAlignment="Left"
-                    Style="{StaticResource Btn}" Click="SteamFix_Click"/>
-        </StackPanel>
+        <!-- Primary fix -->
+        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="16" Margin="0,0,0,18">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <TextBlock Text="ИГРЫ И STEAM НЕ РАБОТАЮТ" Style="{StaticResource Caption}" Margin="0,0,0,4"/>
+                    <TextBlock Text="Интернет есть, но приложения выдают ошибки соединения"
+                               Style="{StaticResource Muted}" FontSize="12"/>
+                </StackPanel>
+                <Button x:Name="BtnSteamFix" Content="Исправить  ·  сброс Winsock *" DockPanel.Dock="Right"
+                        VerticalAlignment="Center" Style="{StaticResource BtnAccent}" Click="SteamFix_Click"/>
+            </DockPanel>
+        </Border>
 
-        <!-- Individual actions -->
-        <StackPanel Grid.Row="3">
-            <WrapPanel>
-                <Button x:Name="BtnFlush"    Content="Очистить кэш DNS"        Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Flush_Click"/>
-                <Button x:Name="BtnRenew"    Content="Обновить IP-адрес"       Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Renew_Click"/>
-                <Button x:Name="BtnWinsock"  Content="Сбросить Winsock *"      Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Winsock_Click"/>
-                <Button x:Name="BtnTcpip"    Content="Сбросить TCP/IP *"       Style="{StaticResource Btn}" Margin="0,0,8,8" Click="TcpIp_Click"/>
-                <Button x:Name="BtnFirewall" Content="Сбросить брандмауэр"     Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Firewall_Click"/>
-                <Button x:Name="BtnFull"     Content="Полный сброс сети *"     Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Full_Click"/>
+        <!-- Individual actions + log -->
+        <Grid Grid.Row="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="ОТДЕЛЬНЫЕ ДЕЙСТВИЯ" Style="{StaticResource Caption}" Margin="0,0,0,9"/>
+
+            <WrapPanel Grid.Row="1">
+                <Button x:Name="BtnFlush"    Content="Очистить кэш DNS"    Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Flush_Click"/>
+                <Button x:Name="BtnRenew"    Content="Обновить IP-адрес"   Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Renew_Click"/>
+                <Button x:Name="BtnWinsock"  Content="Сбросить Winsock *"  Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Winsock_Click"/>
+                <Button x:Name="BtnTcpip"    Content="Сбросить TCP/IP *"   Style="{StaticResource Btn}" Margin="0,0,8,8" Click="TcpIp_Click"/>
+                <Button x:Name="BtnFirewall" Content="Сбросить брандмауэр" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Firewall_Click"/>
+                <Button x:Name="BtnFull"     Content="Полный сброс сети *" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Full_Click"/>
             </WrapPanel>
 
-            <TextBlock Text="* — потребуется перезагрузка компьютера (по таймеру из настроек)."
-                       Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"/>
+            <TextBlock Grid.Row="2" Margin="0,2,0,14" Style="{StaticResource Muted}" FontSize="12"
+                       Text="* — потребуется перезагрузка компьютера (по таймеру из настроек)."/>
 
-            <TextBlock Text="Журнал:" Margin="0,10,0,4" Foreground="{DynamicResource MutedBrush}"/>
-            <TextBox x:Name="LogBox" Height="240" IsReadOnly="True" TextWrapping="NoWrap"
-                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                     FontFamily="Consolas" Background="{DynamicResource PanelBrush}"
-                     Foreground="{DynamicResource FgBrush}" BorderBrush="{DynamicResource BorderBrush2}"
-                     BorderThickness="1" Padding="8"/>
-        </StackPanel>
+            <Grid Grid.Row="3">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="ЖУРНАЛ" Style="{StaticResource Caption}" Margin="0,0,0,8"/>
+                <TextBox x:Name="LogBox" Grid.Row="1" Style="{StaticResource ConsoleBox}"
+                         TextWrapping="NoWrap" MinHeight="180"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+            </Grid>
+        </Grid>
 
         <!-- Footer -->
-        <DockPanel Grid.Row="4" Margin="0,14,0,0" LastChildFill="False">
-            <TextBlock x:Name="Hint" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"
-                       Text="Готово."/>
-            <Button Content="Закрыть" DockPanel.Dock="Right" Style="{StaticResource Btn}" Margin="8,0,0,0" Click="Close_Click"/>
-            <Button x:Name="BtnReboot" Content="Перезагрузить сейчас" DockPanel.Dock="Right" Style="{StaticResource Btn}" Click="Reboot_Click"/>
+        <DockPanel Grid.Row="4" Margin="0,18,0,0" LastChildFill="False">
+            <TextBlock x:Name="Hint" VerticalAlignment="Center" Style="{StaticResource Mono}" Text="Готово."/>
+            <Button Content="Закрыть" DockPanel.Dock="Right" Style="{StaticResource Btn}" Margin="9,0,0,0" Click="Close_Click"/>
+            <Button x:Name="BtnReboot" Content="Перезагрузить сейчас" DockPanel.Dock="Right"
+                    Style="{StaticResource Btn}" Click="Reboot_Click"/>
         </DockPanel>
     </Grid>
 </Window>
