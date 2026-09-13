@@ -13,27 +13,53 @@ public readonly record struct ActionResult(bool Ok, string Message)
 
 public static class ProcessActions
 {
-    public static ActionResult Kill(int pid)
+    /// <summary>
+    /// Terminates a process and its children. Critical Windows processes are
+    /// refused outright — killing lsass or csrss bluescreens the machine, so a
+    /// confirmation dialog would be false comfort.
+    /// </summary>
+    public static ActionResult Kill(int pid, string? processName = null)
     {
-        if (pid <= 4) return ActionResult.Fail("Системный процесс завершить нельзя.");
+        var verdict = ProcessGuard.Check(pid, processName, out string reason);
+        if (verdict == ProcessGuard.Verdict.Blocked)
+        {
+            ActionLog.Warn($"Отклонено завершение PID {pid} ({processName}): {reason}");
+            return ActionResult.Fail(reason);
+        }
+
         try
         {
             using var p = Process.GetProcessById(pid);
+            string name = p.ProcessName;
             p.Kill(entireProcessTree: true);
-            return ActionResult.Success($"Процесс {p.ProcessName} (PID {pid}) завершён.");
+            ActionLog.Action($"Завершён процесс {name} (PID {pid}) вместе с дочерними.");
+            return ActionResult.Success($"Процесс {name} (PID {pid}) завершён.");
         }
         catch (Exception ex)
         {
+            ActionLog.Error($"Не удалось завершить PID {pid}", ex);
             return ActionResult.Fail($"Не удалось завершить PID {pid}: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Asks the guard whether this process may be touched at all, and what the
+    /// user should be warned about. The UI calls this before Kill/Suspend.
+    /// </summary>
+    public static ProcessGuard.Verdict CanTouch(int pid, string? processName, out string reason)
+        => ProcessGuard.Check(pid, processName, out reason);
 
     public static ActionResult Suspend(int pid) => SuspendResume(pid, suspend: true);
     public static ActionResult Resume(int pid) => SuspendResume(pid, suspend: false);
 
     private static ActionResult SuspendResume(int pid, bool suspend)
     {
-        if (pid <= 4) return ActionResult.Fail("Системный процесс трогать нельзя.");
+        // Resuming is always safe; suspending a critical process hangs the system.
+        if (suspend && ProcessGuard.Check(pid, null, out string blocked) == ProcessGuard.Verdict.Blocked)
+        {
+            ActionLog.Warn($"Отклонена приостановка PID {pid}: {blocked}");
+            return ActionResult.Fail(blocked);
+        }
         IntPtr h = NativeMethods.OpenProcess(NativeMethods.PROCESS_SUSPEND_RESUME, false, pid);
         if (h == IntPtr.Zero)
             return ActionResult.Fail($"Нет доступа к PID {pid} (запустите от администратора).");
@@ -44,6 +70,10 @@ public static class ProcessActions
                 : NativeMethods.NtResumeProcess(h);
             if (status != 0)
                 return ActionResult.Fail($"Операция не выполнена (NTSTATUS 0x{status:X}).");
+
+            ActionLog.Action(suspend
+                ? $"Приостановлен процесс PID {pid} ({ProcessGuard.NameOf(pid)})."
+                : $"Возобновлён процесс PID {pid} ({ProcessGuard.NameOf(pid)}).");
             return ActionResult.Success(suspend
                 ? $"Процесс PID {pid} приостановлен."
                 : $"Процесс PID {pid} возобновлён.");
@@ -56,14 +86,19 @@ public static class ProcessActions
 
     public static ActionResult SetPriority(int pid, ProcessPriorityClass priority)
     {
+        if (ProcessGuard.Check(pid, null, out string blocked) == ProcessGuard.Verdict.Blocked)
+            return ActionResult.Fail(blocked);
+
         try
         {
             using var p = Process.GetProcessById(pid);
             p.PriorityClass = priority;
+            ActionLog.Action($"Приоритет {p.ProcessName} (PID {pid}) → {priority}.");
             return ActionResult.Success($"Приоритет {p.ProcessName} → {priority}.");
         }
         catch (Exception ex)
         {
+            ActionLog.Error($"Не удалось изменить приоритет PID {pid}", ex);
             return ActionResult.Fail($"Не удалось изменить приоритет PID {pid}: {ex.Message}");
         }
     }
@@ -96,7 +131,10 @@ public static class ProcessActions
 
         int r = NativeMethods.SetTcpEntry(ref row);
         if (r == 0)
+        {
+            ActionLog.Action($"Закрыто соединение {c.ProcessName} (PID {c.Pid}): {c.LocalEndpoint} → {c.RemoteEndpoint}.");
             return ActionResult.Success($"Соединение {c.LocalEndpoint} → {c.RemoteEndpoint} закрыто.");
+        }
         if (r == 5)
             return ActionResult.Fail("Отказано в доступе. Запустите приложение от имени администратора.");
         if (r == 87)
@@ -127,7 +165,11 @@ public static class FirewallService
         var inRes = Netsh($"advfirewall firewall add rule name=\"{name} (in)\" dir=in action=block program=\"{programPath}\" enable=yes");
 
         if (outRes.Ok && inRes.Ok)
+        {
+            ActionLog.Action($"Заблокирована в брандмауэре программа: {programPath}");
             return ActionResult.Success($"Программа заблокирована в брандмауэре:\n{programPath}\n\nСнять блокировку можно кнопкой «Разблокировать» или в «Брандмауэре Защитника Windows».");
+        }
+        ActionLog.Warn($"Не удалось заблокировать {programPath}: {outRes.Message} / {inRes.Message}");
         return ActionResult.Fail($"Не удалось создать правило.\n{outRes.Message}\n{inRes.Message}");
     }
 
@@ -140,6 +182,7 @@ public static class FirewallService
         string name = $"{RulePrefix} - {System.IO.Path.GetFileName(programPath)}";
         Netsh($"advfirewall firewall delete rule name=\"{name} (out)\"");
         Netsh($"advfirewall firewall delete rule name=\"{name} (in)\"");
+        ActionLog.Action($"Снята блокировка в брандмауэре: {programPath}");
         return ActionResult.Success($"Правила блокировки для {System.IO.Path.GetFileName(programPath)} удалены (если существовали).");
     }
 

@@ -31,6 +31,8 @@ public static class NetworkRepair
             string err = p.StandardError.ReadToEnd();
             p.WaitForExit(60000);
 
+            ActionLog.Action($"Ремонт сети: {file} {args} (код {p.ExitCode})");
+
             var sb = new StringBuilder();
             sb.AppendLine($"> {file} {args}");
             if (!string.IsNullOrWhiteSpace(outp)) sb.AppendLine(outp.Trim());

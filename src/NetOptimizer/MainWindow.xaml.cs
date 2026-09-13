@@ -22,11 +22,19 @@ public partial class MainWindow : Window
     private ICollectionView _view = null!;
     private ICollectionView _logView = null!;
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _flushTimer;
     private readonly TrafficMonitor _traffic = new();
     private UpdateService.UpdateInfo? _pendingUpdate;
+    private readonly ObservableCollection<DiagStep> _diagSteps = new();
     private string _logName = "System";
     private bool _logLoaded;
     private bool _busy;
+
+    /// <summary>0 = current session, otherwise number of days of stored history.</summary>
+    private int _statsDays;
+    private bool _diagRunning;
+
+    private const int SparkSamples = 60;
 
     public MainWindow()
     {
@@ -36,6 +44,7 @@ public partial class MainWindow : Window
         _view = CollectionViewSource.GetDefaultView(_items);
         _view.Filter = FilterPredicate;
 
+        DiagList.ItemsSource = _diagSteps;
         LogGrid.ItemsSource = _logItems;
         _logView = CollectionViewSource.GetDefaultView(_logItems);
         _logView.Filter = LogFilter;
@@ -51,10 +60,21 @@ public partial class MainWindow : Window
             Refresh();
             _timer.Start();
             UpdateService.CleanupLeftovers();
+            UsageStats.Prune();
             _ = CheckForUpdatesAsync();
         };
 
-        Closed += (_, _) => _traffic.Dispose();
+        // Traffic counters are only useful if they survive the app closing.
+        _flushTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _flushTimer.Tick += (_, _) => UsageStats.Flush();
+        _flushTimer.Start();
+
+        Closed += (_, _) =>
+        {
+            _flushTimer.Stop();
+            UsageStats.Flush();
+            _traffic.Dispose();
+        };
         SourceInitialized += (_, _) => ThemeHelper.SetTitleBar(this, ThemeService.Current == ThemeService.Dark);
     }
 
@@ -182,12 +202,24 @@ public partial class MainWindow : Window
     private void ApplyRates()
     {
         if (!_traffic.Available) return;
+
         foreach (var c in _items)
         {
             var (down, up) = _traffic.GetRate(c.Pid);
             c.DownloadRate = down;
             c.UploadRate = up;
+
+            var (totalDown, totalUp) = _traffic.GetTotal(c.Pid);
+            c.TotalDown = totalDown;
+            c.TotalUp = totalUp;
+
+            // Several rows can share a PID; Record only counts the growth, so
+            // the repeated calls within one tick add nothing.
+            UsageStats.Record(c.Pid, c.ProcessName, totalDown, totalUp);
         }
+
+        if (StatsView.Visibility == Visibility.Visible && _statsDays == 0)
+            RebuildStats();
     }
 
     private void Reconcile(List<ConnectionInfo> incoming)
@@ -284,20 +316,35 @@ public partial class MainWindow : Window
 
     // ---------------- View switching (tabs) ----------------
 
-    private void ShowConnections_Click(object sender, RoutedEventArgs e) => SwitchView(showLog: false);
+    private enum ViewId { Connections, Stats, Diagnostics, Log }
+
+    private void ShowConnections_Click(object sender, RoutedEventArgs e) => SwitchView(ViewId.Connections);
+
+    private void ShowStats_Click(object sender, RoutedEventArgs e)
+    {
+        SwitchView(ViewId.Stats);
+        RebuildStats();
+    }
+
+    private void ShowDiag_Click(object sender, RoutedEventArgs e) => SwitchView(ViewId.Diagnostics);
 
     private void ShowLog_Click(object sender, RoutedEventArgs e)
     {
-        SwitchView(showLog: true);
+        SwitchView(ViewId.Log);
         if (!_logLoaded) LoadLog();
     }
 
-    private void SwitchView(bool showLog)
+    private void SwitchView(ViewId view)
     {
-        ConnectionsView.Visibility = showLog ? Visibility.Collapsed : Visibility.Visible;
-        LogView.Visibility = showLog ? Visibility.Visible : Visibility.Collapsed;
-        BtnViewConn.Tag = showLog ? "inactive" : "active";
-        BtnViewLog.Tag = showLog ? "active" : "inactive";
+        ConnectionsView.Visibility = view == ViewId.Connections ? Visibility.Visible : Visibility.Collapsed;
+        StatsView.Visibility = view == ViewId.Stats ? Visibility.Visible : Visibility.Collapsed;
+        DiagView.Visibility = view == ViewId.Diagnostics ? Visibility.Visible : Visibility.Collapsed;
+        LogView.Visibility = view == ViewId.Log ? Visibility.Visible : Visibility.Collapsed;
+
+        BtnViewConn.Tag = view == ViewId.Connections ? "active" : "inactive";
+        BtnViewStats.Tag = view == ViewId.Stats ? "active" : "inactive";
+        BtnViewDiag.Tag = view == ViewId.Diagnostics ? "active" : "inactive";
+        BtnViewLog.Tag = view == ViewId.Log ? "active" : "inactive";
     }
 
     // ---------------- Windows event log ----------------
@@ -495,13 +542,50 @@ public partial class MainWindow : Window
 
     private void Kill_Click(object sender, RoutedEventArgs e)
     {
-        var pids = SelectedMany.Select(c => c.Pid).Distinct().ToList();
-        if (pids.Count == 0) return;
-        var names = string.Join(", ", SelectedMany.Select(c => $"{c.ProcessName} ({c.Pid})").Distinct());
-        if (MessageBox.Show($"Завершить процессы?\n\n{names}", "Подтверждение",
-                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        var targets = SelectedMany
+            .GroupBy(c => c.Pid)
+            .Select(g => g.First())
+            .ToList();
+        if (targets.Count == 0) return;
+
+        var allowed = new List<ConnectionInfo>();
+        var blocked = new List<string>();
+        var warnings = new List<string>();
+
+        foreach (var c in targets)
+        {
+            switch (ProcessActions.CanTouch(c.Pid, c.ProcessName, out string reason))
+            {
+                case ProcessGuard.Verdict.Blocked:
+                    blocked.Add(reason);
+                    break;
+                case ProcessGuard.Verdict.NeedsConfirmation:
+                    warnings.Add(reason);
+                    allowed.Add(c);
+                    break;
+                default:
+                    allowed.Add(c);
+                    break;
+            }
+        }
+
+        if (blocked.Count > 0)
+            MessageBox.Show(string.Join("\n\n", blocked.Distinct()),
+                "Действие заблокировано", MessageBoxButton.OK, MessageBoxImage.Stop);
+
+        if (allowed.Count == 0) return;
+
+        string names = string.Join(", ", allowed.Select(c => $"{c.ProcessName} ({c.Pid})"));
+        string question = $"Завершить процессы?\n\n{names}";
+        if (warnings.Count > 0)
+            question += "\n\n⚠ " + string.Join("\n⚠ ", warnings.Distinct());
+
+        if (MessageBox.Show(question, "Подтверждение",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
-        foreach (var pid in pids) StatusText.Text = ProcessActions.Kill(pid).Message;
+
+        foreach (var c in allowed)
+            StatusText.Text = ProcessActions.Kill(c.Pid, c.ProcessName).Message;
         Refresh();
     }
 
@@ -692,9 +776,7 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.Space)
         {
-            foreach (var c in SelectedMany.Select(x => x.Pid).Distinct())
-                ProcessActions.Suspend(c);
-            StatusText.Text = "Выбранные процессы приостановлены (возобновить — в меню).";
+            SuspendSelected();
             e.Handled = true;
         }
     }
@@ -715,14 +797,226 @@ public partial class MainWindow : Window
         catch { /* clipboard busy */ }
     }
 
+    /// <summary>
+    /// Space used to suspend every selected process without asking. With a hundred
+    /// rows selected that could freeze half the machine on an accidental keypress.
+    /// </summary>
+    private void SuspendSelected()
+    {
+        var targets = SelectedMany.GroupBy(c => c.Pid).Select(g => g.First()).ToList();
+        if (targets.Count == 0) return;
+
+        var allowed = new List<ConnectionInfo>();
+        var blocked = new List<string>();
+        foreach (var c in targets)
+        {
+            if (ProcessActions.CanTouch(c.Pid, c.ProcessName, out string reason) == ProcessGuard.Verdict.Blocked)
+                blocked.Add(reason);
+            else
+                allowed.Add(c);
+        }
+
+        if (blocked.Count > 0)
+            MessageBox.Show(string.Join("\n\n", blocked.Distinct()),
+                "Действие заблокировано", MessageBoxButton.OK, MessageBoxImage.Stop);
+        if (allowed.Count == 0) return;
+
+        string names = string.Join(", ", allowed.Select(c => $"{c.ProcessName} ({c.Pid})"));
+        if (MessageBox.Show(
+                $"Приостановить процессы?\n\n{names}\n\nПриостановленная программа перестаёт отвечать, " +
+                "пока вы не возобновите её через контекстное меню.",
+                "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        int done = 0;
+        foreach (var c in allowed)
+            if (ProcessActions.Suspend(c.Pid).Ok) done++;
+
+        StatusText.Text = $"Приостановлено процессов: {done} (возобновить — в контекстном меню).";
+    }
+
     private void CloseSelectedConnections()
     {
         var rows = SelectedMany.Where(c => c.Protocol == "TCP" && !c.IsIPv6).ToList();
         if (rows.Count == 0) return;
+
+        if (rows.Count > 1 && MessageBox.Show(
+                $"Закрыть выбранные соединения ({rows.Count})?\n\n" +
+                "Программы, которым они принадлежат, могут потерять связь и переподключиться.",
+                "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
         int closed = 0;
         foreach (var c in rows)
             if (ProcessActions.CloseConnection(c).Ok) closed++;
         StatusText.Text = $"Закрыто соединений: {closed}";
         Refresh();
+    }
+    // ---------------- Statistics ----------------
+
+    private void Period_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.CommandParameter is not string s || !int.TryParse(s, out int days))
+            return;
+
+        _statsDays = days;
+        foreach (var child in PeriodPanel.Children)
+            if (child is Button pb && pb.CommandParameter is string ps)
+                pb.Tag = ps == s ? "active" : "inactive";
+
+        RebuildStats();
+    }
+
+    private void RefreshStats_Click(object sender, RoutedEventArgs e) => RebuildStats();
+
+    private void ClearStats_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(
+                "Удалить всю накопленную статистику трафика?\n\nИстория по дням будет стёрта безвозвратно.",
+                "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        UsageStats.Clear();
+        RebuildStats();
+    }
+
+    private void RebuildStats()
+    {
+        List<UsageRow> all = _statsDays == 0 ? BuildSessionRows() : BuildPeriodRows(_statsDays);
+
+        long down = all.Sum(r => r.Down);
+        long up = all.Sum(r => r.Up);
+
+        StatsTotalDown.Text = UsageStats.FormatBytes(down);
+        StatsTotalUp.Text = UsageStats.FormatBytes(up);
+        StatsTotalAll.Text = UsageStats.FormatBytes(down + up);
+
+        StatsList.ItemsSource = UsageRow.Rank(all, 40);
+
+        StatsStatus.Text = _statsDays switch
+        {
+            0 when !_traffic.Available => "Мониторинг трафика недоступен — запустите программу от администратора.",
+            0 => $"Текущая сессия, с {_traffic.StartedAt:HH:mm} · приложений: {all.Count(r => r.Total > 0)}",
+            1 => $"Сегодня · приложений: {all.Count(r => r.Total > 0)}",
+            _ => $"За последние {_statsDays} дн. · приложений: {all.Count(r => r.Total > 0)}"
+        };
+    }
+
+    /// <summary>Live totals since launch, grouped by process name across its PIDs.</summary>
+    private List<UsageRow> BuildSessionRows()
+    {
+        var nameByPid = new Dictionary<int, string>();
+        var iconByName = new Dictionary<string, ImageSource?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var c in _items)
+        {
+            nameByPid[c.Pid] = c.ProcessName;
+            if (!iconByName.ContainsKey(c.ProcessName)) iconByName[c.ProcessName] = c.Icon;
+        }
+
+        var acc = new Dictionary<string, (long down, long up, double[] history)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (int pid in _traffic.KnownPids())
+        {
+            // A process may have exited since it last transferred data.
+            string name = nameByPid.TryGetValue(pid, out var n) ? n : $"PID {pid}";
+
+            var (d, u) = _traffic.GetTotal(pid);
+            var hist = _traffic.GetHistory(pid);
+
+            if (!acc.TryGetValue(name, out var e))
+                e = (0, 0, new double[SparkSamples]);
+
+            e.down += d;
+            e.up += u;
+            for (int i = 0; i < hist.Length && i < e.history.Length; i++)
+                e.history[i] += hist[i];
+
+            acc[name] = e;
+        }
+
+        return acc.Select(kv => new UsageRow
+        {
+            Name = kv.Key,
+            Down = kv.Value.down,
+            Up = kv.Value.up,
+            Icon = iconByName.TryGetValue(kv.Key, out var ic) ? ic : null,
+            Spark = UsageRow.BuildSpark(kv.Value.history)
+        }).ToList();
+    }
+
+    /// <summary>Totals read back from the stored daily files.</summary>
+    private List<UsageRow> BuildPeriodRows(int days)
+    {
+        var iconByName = new Dictionary<string, ImageSource?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in _items)
+            if (!iconByName.ContainsKey(c.ProcessName)) iconByName[c.ProcessName] = c.Icon;
+
+        return UsageStats.GetRange(days).Select(x => new UsageRow
+        {
+            Name = x.Name,
+            Down = x.Down,
+            Up = x.Up,
+            Icon = iconByName.TryGetValue(x.Name, out var ic) ? ic : null
+        }).ToList();
+    }
+
+    // ---------------- Diagnostics ----------------
+
+    private async void DiagRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (_diagRunning) return;
+        _diagRunning = true;
+        BtnDiagRun.IsEnabled = false;
+        BtnDiagRun.Content = "Проверяю…";
+        _diagSteps.Clear();
+        DiagVerdict.Text = "Идёт проверка сети…";
+
+        try
+        {
+            // Progress is created on the UI thread, so its callbacks land there too.
+            var progress = new Progress<DiagStep>(step =>
+            {
+                if (!_diagSteps.Contains(step)) _diagSteps.Add(step);
+            });
+
+            var steps = await DiagnosticsService.RunAsync(progress);
+            DiagVerdict.Text = DiagnosticsService.Verdict(steps);
+            ActionLog.Info("Диагностика сети: " + DiagVerdict.Text);
+        }
+        catch (Exception ex)
+        {
+            DiagVerdict.Text = "Проверка не завершилась: " + ex.Message;
+            ActionLog.Error("Диагностика сети прервана", ex);
+        }
+        finally
+        {
+            BtnDiagRun.IsEnabled = true;
+            BtnDiagRun.Content = "Проверить сеть";
+            _diagRunning = false;
+        }
+    }
+
+    private void DiagCopy_Click(object sender, RoutedEventArgs e)
+    {
+        if (_diagSteps.Count == 0)
+        {
+            StatusText.Text = "Сначала запустите проверку.";
+            return;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("NetOptimizer — диагностика сети");
+        sb.AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+        sb.AppendLine(DiagVerdict.Text);
+        sb.AppendLine();
+        foreach (var step in _diagSteps) sb.AppendLine(step.ToString());
+
+        try
+        {
+            Clipboard.SetText(sb.ToString());
+            StatusText.Text = "Отчёт о диагностике скопирован.";
+        }
+        catch { /* clipboard busy */ }
     }
 }

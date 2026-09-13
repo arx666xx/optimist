@@ -1,7 +1,7 @@
 <Window x:Class="NetOptimizer.BoostWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Ускорение"
+        Title="Разгрузка сети"
         Height="660" Width="680"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource WindowBg}"
@@ -21,9 +21,9 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="Ускорение приложения" Style="{StaticResource H1}" Margin="0,0,0,6"/>
+        <TextBlock Grid.Row="0" Text="Разгрузка сети для приложения" Style="{StaticResource H1}" Margin="0,0,0,6"/>
         <TextBlock Grid.Row="1" TextWrapping="Wrap" Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,18"
-                   Text="Выберите приложение — ему будет поднят приоритет. Остальным фоновым программам можно понизить приоритет и закрыть их сетевые соединения, чтобы освободить канал. Системные процессы не затрагиваются."/>
+                   Text="Выберите приложение — например игру. Ему будет поднят приоритет процессора, а фоновым программам приоритет понижен и закрыты их сетевые соединения, чтобы они не занимали канал. Windows не умеет выдавать приложению больше скорости, поэтому канал освобождается именно за счёт остальных. Системные процессы не затрагиваются."/>
 
         <TextBlock Grid.Row="2" Text="ПРИЛОЖЕНИЕ" Style="{StaticResource Caption}" Margin="0,0,0,8"/>
         <TextBox x:Name="Search" Grid.Row="3" Style="{StaticResource SearchBox}" Margin="0,0,0,9"
@@ -51,7 +51,7 @@
 
         <DockPanel Grid.Row="7" Margin="0,16,0,0" LastChildFill="False">
             <Button Content="Закрыть" DockPanel.Dock="Right" Style="{StaticResource Btn}" Margin="9,0,0,0" Click="Close_Click"/>
-            <Button x:Name="BtnBoost" Content="Ускорить" DockPanel.Dock="Right" Style="{StaticResource BtnAccent}" Click="Boost_Click"/>
+            <Button x:Name="BtnBoost" Content="Разгрузить" DockPanel.Dock="Right" Style="{StaticResource BtnAccent}" Click="Boost_Click"/>
             <Button Content="Сбросить приоритеты" DockPanel.Dock="Left" Style="{StaticResource Btn}" Click="Reset_Click"/>
         </DockPanel>
     </Grid>

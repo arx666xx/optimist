@@ -40,6 +40,10 @@
                     <StackPanel Orientation="Horizontal">
                         <Button x:Name="BtnViewConn" Content="Соединения" Style="{StaticResource TabBtn}"
                                 Tag="active" Click="ShowConnections_Click"/>
+                        <Button x:Name="BtnViewStats" Content="Статистика" Style="{StaticResource TabBtn}"
+                                Tag="inactive" Margin="3,0,0,0" Click="ShowStats_Click"/>
+                        <Button x:Name="BtnViewDiag" Content="Диагностика" Style="{StaticResource TabBtn}"
+                                Tag="inactive" Margin="3,0,0,0" Click="ShowDiag_Click"/>
                         <Button x:Name="BtnViewLog" Content="Журнал Windows" Style="{StaticResource TabBtn}"
                                 Tag="inactive" Margin="3,0,0,0" Click="ShowLog_Click"/>
                     </StackPanel>
@@ -73,8 +77,10 @@
                     <CheckBox x:Name="OnlySuspicious" Content="Подозрительные"   Margin="16,0,0,0" Click="Filter_Changed"/>
                     <CheckBox x:Name="GroupByProcess" Content="Группировать"     Margin="16,0,0,0" Click="GroupBy_Changed"/>
 
-                    <Button Content="Ускорить" DockPanel.Dock="Right" Margin="9,0,0,0"
-                            Style="{StaticResource BtnAccent}" Click="Boost_Click"/>
+                    <Button Content="Разгрузить сеть" DockPanel.Dock="Right" Margin="9,0,0,0"
+                            Style="{StaticResource BtnAccent}"
+                            ToolTip="Освободить канал для выбранного приложения"
+                            Click="Boost_Click"/>
                     <Button Content="Ремонт сети" DockPanel.Dock="Right" Margin="9,0,0,0"
                             Style="{StaticResource Btn}" Click="Repair_Click"/>
                     <Button Content="Экспорт" DockPanel.Dock="Right" Margin="9,0,0,0"
@@ -137,6 +143,16 @@
                                 <DataTemplate>
                                     <TextBlock Text="{Binding UploadRateText}" Style="{StaticResource Mono}"
                                                Foreground="{DynamicResource AccentBrush2}" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="ОБЪЁМ" Width="92" SortMemberPath="TotalBytes">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding TotalText}" Style="{StaticResource Mono}"
+                                               ToolTip="Скачано и отдано с момента запуска программы"
+                                               VerticalAlignment="Center"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -353,6 +369,186 @@
                 <TextBlock x:Name="LogStatus" Text="Откройте вкладку, чтобы загрузить журнал."
                            Style="{StaticResource Mono}"/>
             </DockPanel>
+        </Grid>
+
+
+        <!-- ============ STATISTICS VIEW ============ -->
+        <Grid x:Name="StatsView" Grid.Row="1" Margin="22,18,22,16" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource Card}" Padding="14,11" Margin="0,0,0,14">
+                <DockPanel LastChildFill="False">
+                    <Border VerticalAlignment="Center" Background="{DynamicResource SurfaceBrush}"
+                            CornerRadius="11" BorderBrush="{DynamicResource BorderBrush2}"
+                            BorderThickness="1" Padding="3">
+                        <StackPanel x:Name="PeriodPanel" Orientation="Horizontal">
+                            <Button Content="Сессия"   CommandParameter="0"  Style="{StaticResource TabBtn}" Tag="active"   Click="Period_Click"/>
+                            <Button Content="Сегодня"  CommandParameter="1"  Style="{StaticResource TabBtn}" Tag="inactive" Margin="3,0,0,0" Click="Period_Click"/>
+                            <Button Content="7 дней"   CommandParameter="7"  Style="{StaticResource TabBtn}" Tag="inactive" Margin="3,0,0,0" Click="Period_Click"/>
+                            <Button Content="30 дней"  CommandParameter="30" Style="{StaticResource TabBtn}" Tag="inactive" Margin="3,0,0,0" Click="Period_Click"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Button Content="Очистить статистику" DockPanel.Dock="Right" Margin="9,0,0,0"
+                            Style="{StaticResource Btn}" Click="ClearStats_Click"/>
+                    <Button Content="Обновить" DockPanel.Dock="Right" Style="{StaticResource Btn}" Click="RefreshStats_Click"/>
+                </DockPanel>
+            </Border>
+
+            <!-- Totals -->
+            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="20,16" Margin="0,0,0,14">
+                <StackPanel Orientation="Horizontal">
+                    <StackPanel Margin="0,0,48,0">
+                        <TextBlock Text="ПРИНЯТО" Style="{StaticResource Caption}" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="StatsTotalDown" Text="—" FontSize="24" FontWeight="Light"
+                                   Foreground="{DynamicResource OkBrush}"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,48,0">
+                        <TextBlock Text="ОТДАНО" Style="{StaticResource Caption}" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="StatsTotalUp" Text="—" FontSize="24" FontWeight="Light"
+                                   Foreground="{DynamicResource AccentBrush2}"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="ВСЕГО" Style="{StaticResource Caption}" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="StatsTotalAll" Text="—" FontSize="24" FontWeight="Light"
+                                   Foreground="{DynamicResource AccentBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Per-application breakdown -->
+            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="StatsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="14,9">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="210"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Image Source="{Binding Icon}" Width="15" Height="15" Margin="0,0,9,0"/>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <Rectangle Grid.Column="1" Height="6" RadiusX="3" RadiusY="3"
+                                               Width="{Binding BarWidth}" HorizontalAlignment="Left"
+                                               VerticalAlignment="Center"
+                                               Fill="{DynamicResource AccentGradient}"/>
+
+                                    <Polyline Grid.Column="2" Points="{Binding Spark}" Margin="18,0,18,0"
+                                              Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.3"
+                                              HorizontalAlignment="Left" VerticalAlignment="Center"
+                                              Opacity="0.75"/>
+
+                                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DownText}" Style="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource OkBrush}" Width="86" TextAlignment="Right"/>
+                                        <TextBlock Text="{Binding UpText}" Style="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource AccentBrush2}" Width="86" TextAlignment="Right"/>
+                                        <TextBlock Text="{Binding TotalText}" Style="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource FgBrush}" Width="92" TextAlignment="Right"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <DockPanel Grid.Row="3" Margin="4,12,4,0" LastChildFill="False">
+                <TextBlock x:Name="StatsStatus" Style="{StaticResource Mono}" Text=""/>
+            </DockPanel>
+        </Grid>
+
+        <!-- ============ DIAGNOSTICS VIEW ============ -->
+        <Grid x:Name="DiagView" Grid.Row="1" Margin="22,18,22,16" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource Card}" Padding="20,16" Margin="0,0,0,14">
+                <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
+                        <TextBlock x:Name="DiagVerdict" Text="Проверка соединения от вашего компьютера наружу"
+                                   FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                        <TextBlock Text="Адаптер → роутер → внешний узел → DNS → HTTPS, плюс типичные следы VPN"
+                                   Style="{StaticResource Muted}" FontSize="12"/>
+                    </StackPanel>
+                    <Button x:Name="BtnDiagRun" Content="Проверить сеть" DockPanel.Dock="Right"
+                            VerticalAlignment="Center" Style="{StaticResource BtnAccent}" Click="DiagRun_Click"/>
+                    <Button x:Name="BtnDiagCopy" Content="Копировать отчёт" DockPanel.Dock="Right" Margin="0,0,9,0"
+                            VerticalAlignment="Center" Style="{StaticResource Btn}" Click="DiagCopy_Click"/>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="DiagList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="16,11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="30"/>
+                                        <ColumnDefinition Width="230"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="15" FontWeight="Bold"
+                                               VerticalAlignment="Top">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource FaintBrush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Ok">
+                                                        <Setter Property="Foreground" Value="{DynamicResource OkBrush}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Warning">
+                                                        <Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                                        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Top"
+                                               TextWrapping="Wrap" Margin="0,0,16,0"/>
+
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Mono}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Advice}" TextWrapping="Wrap" Margin="0,5,0,0"
+                                                   Foreground="{DynamicResource WarnBrush}" FontSize="12">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Advice}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
         </Grid>
 
         <!-- ============ SETTINGS SLIDE-OUT PANEL ============ -->

@@ -80,6 +80,27 @@ public class ConnectionInfo : INotifyPropertyChanged
     public string DownloadRateText => FormatRate(_downloadRate);
     public string UploadRateText => FormatRate(_uploadRate);
 
+    private long _totalDown;
+    /// <summary>Bytes received by this process since the app was started.</summary>
+    public long TotalDown
+    {
+        get => _totalDown;
+        set { if (_totalDown != value) { _totalDown = value; Raise(nameof(TotalDown)); Raise(nameof(TotalText)); } }
+    }
+
+    private long _totalUp;
+    /// <summary>Bytes sent by this process since the app was started.</summary>
+    public long TotalUp
+    {
+        get => _totalUp;
+        set { if (_totalUp != value) { _totalUp = value; Raise(nameof(TotalUp)); Raise(nameof(TotalText)); } }
+    }
+
+    public long TotalBytes => _totalDown + _totalUp;
+
+    /// <summary>Combined volume for the session, e.g. "1,4 ГБ".</summary>
+    public string TotalText => TotalBytes > 0 ? Services.UsageStats.FormatBytes(TotalBytes) : "";
+
     public static string FormatRate(double bytesPerSec)
     {
         if (bytesPerSec < 1) return "";
