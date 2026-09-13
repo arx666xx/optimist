@@ -252,6 +252,18 @@
                             <Button Content="0 сек" CommandParameter="0"   Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,6,6" Click="Timer_Click"/>
                         </WrapPanel>
 
+                        <TextBlock Text="Обновление программы" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="UpdateVersionText" Foreground="{DynamicResource MutedBrush}"
+                                   TextWrapping="Wrap" Margin="0,0,0,8" Text="Установленная версия: —"/>
+                        <Button x:Name="BtnUpdateApp" Content="🔄 Обновить приложение"
+                                HorizontalAlignment="Left" Style="{StaticResource Btn}"
+                                Margin="0,0,0,8" Click="UpdateApp_Click"/>
+                        <ProgressBar x:Name="UpdateProgress" Height="6" Minimum="0" Maximum="1"
+                                     Visibility="Collapsed" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,22"
+                                   Text="Проверяет релизы на GitHub, скачивает новую версию, сверяет её контрольную сумму SHA-256 и заменяет старый файл, удаляя ненужное."/>
+
                         <Border Background="{DynamicResource PanelBrush}" CornerRadius="10"
                                 BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" Padding="14">
                             <StackPanel>

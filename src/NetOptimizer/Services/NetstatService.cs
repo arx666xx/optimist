@@ -1,14 +1,17 @@
-using System.Diagnostics;
-using System.Text;
 using NetOptimizer.Models;
 
 namespace NetOptimizer.Services;
 
 /// <summary>
-/// Enumerates active TCP/UDP connections using `netstat -ano`
-/// (rock-solid, no fragile struct marshalling) and enriches each
-/// row with the owning process name, icon, and a friendly description
-/// (product name, or the Windows service(s) hosted by svchost).
+/// Builds the connection list shown in the UI.
+///
+/// Data sources (all native, no child processes, no localized text):
+///   * <see cref="ConnectionTable"/> — TCP/UDP rows from iphlpapi (IPv4 + IPv6);
+///   * <see cref="ProcessCache"/>    — PID -> name / path / description, cached;
+///   * <see cref="ServiceMap"/>      — PID -> Windows service names for svchost.
+///
+/// The class name is kept for compatibility with the rest of the app; it no
+/// longer shells out to netstat.
 /// </summary>
 public static class NetstatService
 {
@@ -23,74 +26,40 @@ public static class NetstatService
 
     public static List<ConnectionInfo> GetConnections()
     {
-        var result = new List<ConnectionInfo>();
-        string output = RunProcess("netstat", "-ano", Encoding.ASCII);
-        if (string.IsNullOrWhiteSpace(output))
-            return result;
+        var rows = ConnectionTable.GetAll();
+        if (rows.Count == 0) return new List<ConnectionInfo>();
 
-        var procCache = BuildProcessCache();
-        var servicesByPid = GetServicesByPid();
+        var procs = ProcessCache.Resolve(rows.Select(r => r.Pid));
+        var services = ServiceMap.Get();
 
-        foreach (var raw in output.Split('\n'))
+        var result = new List<ConnectionInfo>(rows.Count);
+
+        foreach (var r in rows)
         {
-            var line = raw.Trim();
-            if (line.Length == 0) continue;
-
-            var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 4) continue;
-
-            string proto = parts[0].ToUpperInvariant();
-            if (proto != "TCP" && proto != "UDP") continue;
-
-            string localTok, remoteTok, state;
-            int pid;
-
-            if (proto == "TCP" && parts.Length >= 5)
-            {
-                localTok = parts[1];
-                remoteTok = parts[2];
-                state = parts[3];
-                if (!int.TryParse(parts[4], out pid)) continue;
-            }
-            else if (proto == "UDP" && parts.Length >= 4)
-            {
-                localTok = parts[1];
-                remoteTok = parts[2];
-                state = "";
-                if (!int.TryParse(parts[3], out pid)) continue;
-            }
-            else continue;
-
-            var (la, lp) = ParseEndpoint(localTok);
-            var (ra, rp) = ParseEndpoint(remoteTok);
-
-            procCache.TryGetValue(pid, out var proc);
-            string name = proc.Name ?? (pid == 0 ? "System Idle" : $"PID {pid}");
-            string? path = proc.Path;
+            procs.TryGetValue(r.Pid, out var proc);
+            string name = string.IsNullOrEmpty(proc.Name) ? $"PID {r.Pid}" : proc.Name;
 
             // Friendly description: hosted services (svchost) > product name > empty.
             string description;
-            if (servicesByPid.TryGetValue(pid, out var svc) && !string.IsNullOrWhiteSpace(svc))
+            if (services.TryGetValue(r.Pid, out var svc) && !string.IsNullOrWhiteSpace(svc))
                 description = svc;
-            else if (!string.IsNullOrWhiteSpace(proc.FileDescription))
-                description = proc.FileDescription!;
             else
-                description = "";
+                description = string.IsNullOrEmpty(proc.Description) ? "" : proc.Description;
 
             var info = new ConnectionInfo
             {
-                Protocol = proto,
-                LocalAddress = la,
-                LocalPort = lp,
-                RemoteAddress = ra,
-                RemotePort = rp,
-                State = state,
-                Pid = pid,
+                Protocol = r.Protocol,
+                LocalAddress = r.LocalAddress,
+                LocalPort = r.LocalPort,
+                RemoteAddress = r.RemoteAddress,
+                RemotePort = r.RemotePort,
+                State = r.State,
+                Pid = r.Pid,
                 ProcessName = name,
-                ProcessPath = path,
+                ProcessPath = proc.Path,
                 Description = description,
-                Icon = IconHelper.Get(path),
-                Signature = SignatureService.Get(path),
+                Icon = IconHelper.Get(proc.Path),
+                Signature = SignatureService.Get(proc.Path),
             };
             info.Suspicious = IsSuspicious(info);
             result.Add(info);
@@ -98,7 +67,7 @@ public static class NetstatService
 
         return result
             .OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(c => c.Protocol)
+            .ThenBy(c => c.Protocol, StringComparer.Ordinal)
             .ToList();
     }
 
@@ -122,117 +91,5 @@ public static class NetstatService
             return true;
 
         return false;
-    }
-
-    private static (string addr, int port) ParseEndpoint(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return ("", 0);
-        int idx = s.LastIndexOf(':');
-        if (idx < 0) return (s, 0);
-
-        string addr = s.Substring(0, idx).Trim('[', ']');
-        string portStr = s.Substring(idx + 1);
-        int port = int.TryParse(portStr, out var p) ? p : 0;
-        return (addr, port);
-    }
-
-    private readonly record struct ProcMeta(string? Name, string? Path, string? FileDescription);
-
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> DescCache = new();
-
-    private static Dictionary<int, ProcMeta> BuildProcessCache()
-    {
-        var dict = new Dictionary<int, ProcMeta>();
-        foreach (var p in Process.GetProcesses())
-        {
-            try
-            {
-                string? path = null;
-                string? desc = null;
-                try
-                {
-                    path = p.MainModule?.FileName;
-                    if (!string.IsNullOrEmpty(path))
-                        desc = DescCache.GetOrAdd(path, GetFileDescription);
-                }
-                catch { /* protected process */ }
-                dict[p.Id] = new ProcMeta(p.ProcessName, path, desc);
-            }
-            catch { /* process exited */ }
-            finally { p.Dispose(); }
-        }
-        return dict;
-    }
-
-    private static string? GetFileDescription(string path)
-    {
-        try { return FileVersionInfo.GetVersionInfo(path).FileDescription; }
-        catch { return null; }
-    }
-
-    /// <summary>Maps PID -> comma-separated Windows service names (mainly for svchost).</summary>
-    private static Dictionary<int, string> GetServicesByPid()
-    {
-        var map = new Dictionary<int, string>();
-        // /svc = show services, /fo csv = machine-readable, /nh = no header
-        string output = RunProcess("tasklist", "/svc /fo csv /nh", null);
-        if (string.IsNullOrWhiteSpace(output))
-            return map;
-
-        foreach (var raw in output.Split('\n'))
-        {
-            var line = raw.Trim();
-            if (line.Length == 0) continue;
-
-            var fields = ParseCsvLine(line);
-            if (fields.Count < 3) continue;
-            if (!int.TryParse(fields[1], out int pid)) continue;
-
-            string services = fields[2].Trim();
-            if (services.Length == 0 || services.Equals("N/A", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            map[pid] = services;
-        }
-        return map;
-    }
-
-    private static List<string> ParseCsvLine(string line)
-    {
-        var fields = new List<string>();
-        var sb = new StringBuilder();
-        bool inQuotes = false;
-        foreach (char ch in line)
-        {
-            if (ch == '"') inQuotes = !inQuotes;
-            else if (ch == ',' && !inQuotes) { fields.Add(sb.ToString()); sb.Clear(); }
-            else sb.Append(ch);
-        }
-        fields.Add(sb.ToString());
-        return fields;
-    }
-
-    private static string RunProcess(string file, string args, Encoding? encoding)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo(file, args)
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            if (encoding != null) psi.StandardOutputEncoding = encoding;
-
-            using var proc = Process.Start(psi);
-            if (proc == null) return "";
-            string output = proc.StandardOutput.ReadToEnd();
-            proc.WaitForExit(5000);
-            return output;
-        }
-        catch
-        {
-            return "";
-        }
     }
 }

@@ -50,7 +50,8 @@ public partial class MainWindow : Window
                 StatusText.Text = "Мониторинг трафика недоступен (запустите от администратора).";
             Refresh();
             _timer.Start();
-            _ = CheckForUpdatesAsync(silent: true);
+            UpdateService.CleanupLeftovers();
+            _ = CheckForUpdatesAsync();
         };
 
         Closed += (_, _) => _traffic.Dispose();
@@ -69,6 +70,10 @@ public partial class MainWindow : Window
     {
         UpdateThemeButtons();
         UpdateTimerButtons();
+        UpdateVersionText.Text = $"Установленная версия: {UpdateService.Format(UpdateService.CurrentVersion)}";
+        BtnUpdateApp.Content = _pendingUpdate != null
+            ? $"🔄 Обновить до {UpdateService.Format(_pendingUpdate.Version)}"
+            : "🔄 Обновить приложение";
         SettingsOverlay.Visibility = Visibility.Visible;
         var anim = new System.Windows.Media.Animation.DoubleAnimation(-340, 0, TimeSpan.FromMilliseconds(190))
         {
@@ -356,60 +361,111 @@ public partial class MainWindow : Window
 
     // ---------------- Updates ----------------
 
-    private async void Update_Click(object sender, RoutedEventArgs e)
-    {
-        if (_pendingUpdate != null)
-        {
-            var res = MessageBox.Show(
-                $"Установить обновление до версии {_pendingUpdate.Version}?\n\n" +
-                "Приложение закроется, обновится и запустится заново.",
-                "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (res != MessageBoxResult.Yes) return;
+    private bool _updating;
 
-            try
-            {
-                StatusText.Text = "Загрузка обновления…";
-                BtnUpdate.IsEnabled = false;
-                await UpdateService.DownloadAndApplyAsync(_pendingUpdate);
-            }
-            catch (Exception ex)
-            {
-                BtnUpdate.IsEnabled = true;
-                MessageBox.Show("Не удалось обновиться: " + ex.Message,
-                    "NetOptimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-        else
+    private async void Update_Click(object sender, RoutedEventArgs e) => await RunUpdateAsync();
+
+    /// <summary>Settings panel: check, download, verify and install in one click.</summary>
+    private async void UpdateApp_Click(object sender, RoutedEventArgs e) => await RunUpdateAsync();
+
+    private async Task RunUpdateAsync()
+    {
+        if (_updating) return;
+        _updating = true;
+        BtnUpdate.IsEnabled = false;
+        BtnUpdateApp.IsEnabled = false;
+
+        try
         {
-            await CheckForUpdatesAsync(silent: false);
+            // 1. Find out whether there is anything to install.
+            if (_pendingUpdate == null)
+            {
+                SetUpdateStatus("Проверка обновлений…");
+                _pendingUpdate = await UpdateService.CheckAsync();
+
+                if (_pendingUpdate == null)
+                {
+                    SetUpdateStatus($"У вас последняя версия ({UpdateService.Format(UpdateService.CurrentVersion)}).");
+                    return;
+                }
+            }
+
+            var info = _pendingUpdate!;
+            BtnUpdate.Content = $"⬇ Обновить до {UpdateService.Format(info.Version)}";
+            BtnUpdateApp.Content = $"🔄 Обновить до {UpdateService.Format(info.Version)}";
+
+            // 2. Ask before replacing the program.
+            string notes = string.IsNullOrWhiteSpace(info.Notes)
+                ? ""
+                : "\n\nЧто нового:\n" + Trim(info.Notes, 600);
+
+            if (MessageBox.Show(
+                    $"Доступна версия {UpdateService.Format(info.Version)} (установлена {UpdateService.Format(UpdateService.CurrentVersion)}).\n\n" +
+                    "Программа скачает её из GitHub, проверит контрольную сумму, заменит старый файл " +
+                    "и перезапустится. Ненужные файлы будут удалены." + notes,
+                    "Обновление NetOptimizer", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                SetUpdateStatus($"Доступна версия {UpdateService.Format(info.Version)}. Обновление отложено.");
+                return;
+            }
+
+            // 3. Download with progress, verify, swap, restart.
+            UpdateProgress.Value = 0;
+            UpdateProgress.Visibility = Visibility.Visible;
+            SetUpdateStatus("Загрузка обновления…");
+
+            var progress = new Progress<double>(p =>
+            {
+                UpdateProgress.Value = p;
+                SetUpdateStatus($"Загрузка обновления… {p * 100:0}%");
+            });
+
+            await UpdateService.DownloadAndApplyAsync(info, progress);
+            SetUpdateStatus("Установка обновления, программа перезапустится…");
+        }
+        catch (UpdateService.UpdateRejectedException ex)
+        {
+            SetUpdateStatus(ex.Message);
+            MessageBox.Show(ex.Message, "Обновление отменено", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            string msg = "Не удалось обновиться: " + ex.Message;
+            SetUpdateStatus(msg);
+            MessageBox.Show(msg, "NetOptimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            UpdateProgress.Visibility = Visibility.Collapsed;
+            BtnUpdate.IsEnabled = true;
+            BtnUpdateApp.IsEnabled = true;
+            _updating = false;
         }
     }
 
-    private async Task CheckForUpdatesAsync(bool silent)
+    private void SetUpdateStatus(string text)
+    {
+        UpdateStatusText.Text = text;
+        StatusText.Text = text.Replace("\n", " ");
+    }
+
+    private static string Trim(string s, int max)
+        => s.Length <= max ? s : s.Substring(0, max) + "…";
+
+    /// <summary>Silent background check on startup — only updates the button caption.</summary>
+    private async Task CheckForUpdatesAsync()
     {
         try
         {
             var info = await UpdateService.CheckAsync();
-            if (info != null)
-            {
-                _pendingUpdate = info;
-                BtnUpdate.Content = $"⬇ Обновить до {info.Version}";
-                if (!silent)
-                    MessageBox.Show($"Доступна новая версия {info.Version}. Нажмите кнопку обновления, чтобы установить.",
-                        "Обновление", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            else if (!silent)
-            {
-                MessageBox.Show($"У вас последняя версия ({UpdateService.CurrentVersion.ToString(3)}).",
-                    "Обновление", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+            if (info == null) return;
+
+            _pendingUpdate = info;
+            BtnUpdate.Content = $"⬇ Обновить до {UpdateService.Format(info.Version)}";
         }
-        catch (Exception ex)
+        catch
         {
-            if (!silent)
-                MessageBox.Show("Не удалось проверить обновления: " + ex.Message +
-                    "\n\nПроверьте, что в UpdateService указаны правильные логин и название репозитория, и что опубликован релиз.",
-                    "NetOptimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+            // No network / no releases — the manual button reports the reason.
         }
     }
 
