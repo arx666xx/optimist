@@ -34,11 +34,10 @@
                 </StackPanel>
 
                 <!-- View switcher -->
-                <Border DockPanel.Dock="Left" Margin="30,0,0,0" VerticalAlignment="Center"
-                        Background="{DynamicResource PanelBrush}" CornerRadius="11"
-                        BorderBrush="{DynamicResource BorderBrush2}" BorderThickness="1" Padding="3">
+                <Border DockPanel.Dock="Left" Margin="30,0,0,0" Style="{StaticResource Segment}"
+                        Background="{DynamicResource PanelBrush}">
                     <StackPanel Orientation="Horizontal">
-                        <Button x:Name="BtnViewConn" Content="Соединения" Style="{StaticResource TabBtn}"
+                        <Button x:Name="BtnViewConn" Content="Сеть" Style="{StaticResource TabBtn}"
                                 Tag="active" Click="ShowConnections_Click"/>
                         <Button x:Name="BtnViewStats" Content="Статистика" Style="{StaticResource TabBtn}"
                                 Tag="inactive" Margin="3,0,0,0" Click="ShowStats_Click"/>
@@ -50,17 +49,18 @@
                 </Border>
 
                 <Button Content="Настройки" DockPanel.Dock="Right" Style="{StaticResource Btn}"
-                        VerticalAlignment="Center" Click="Settings_Click"/>
+                        Click="Settings_Click"/>
                 <Button x:Name="BtnUpdate" Content="Обновления" DockPanel.Dock="Right" Margin="0,0,9,0"
-                        Style="{StaticResource Btn}" VerticalAlignment="Center" Click="Update_Click"/>
+                        Style="{StaticResource Btn}" Click="Update_Click"/>
             </DockPanel>
 
             <Rectangle Grid.Row="1" Height="1" Fill="{DynamicResource BorderBrush2}"/>
         </Grid>
 
-        <!-- ============ CONNECTIONS VIEW ============ -->
+        <!-- ============ NETWORK VIEW (apps + raw connections) ============ -->
         <Grid x:Name="ConnectionsView" Grid.Row="1" Margin="22,18,22,16">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -70,32 +70,265 @@
             <Border Grid.Row="0" Style="{StaticResource Card}" Padding="14,11" Margin="0,0,0,14">
                 <DockPanel LastChildFill="False">
                     <TextBox x:Name="FilterBox" Width="240" Style="{StaticResource SearchBox}"
-                             TextChanged="FilterBox_TextChanged" ToolTip="Процесс, адрес, порт или состояние"/>
+                             Tag="Поиск: программа, сервер, порт"
+                             TextChanged="FilterBox_TextChanged"/>
 
-                    <CheckBox x:Name="HideLoopback"   Content="Скрыть локальные" Margin="18,0,0,0" Click="Filter_Changed"/>
-                    <CheckBox x:Name="OnlyActive"     Content="Активные"         Margin="16,0,0,0" Click="Filter_Changed"/>
-                    <CheckBox x:Name="OnlySuspicious" Content="Подозрительные"   Margin="16,0,0,0" Click="Filter_Changed"/>
-                    <CheckBox x:Name="GroupByProcess" Content="Группировать"     Margin="16,0,0,0" Click="GroupBy_Changed"/>
+                    <Border Style="{StaticResource Segment}" Margin="12,0,0,0">
+                        <StackPanel x:Name="ScopePanel" Orientation="Horizontal">
+                            <Button Content="В сети" CommandParameter="online" Style="{StaticResource TabBtn}" Tag="active"
+                                    ToolTip="Программы, которые сейчас обмениваются данными с интернетом" Click="Scope_Click"/>
+                            <Button Content="Все" CommandParameter="all" Style="{StaticResource TabBtn}" Tag="inactive"
+                                    Margin="3,0,0,0" Click="Scope_Click"/>
+                            <Button Content="Подозрительные" CommandParameter="suspicious" Style="{StaticResource TabBtn}" Tag="inactive"
+                                    Margin="3,0,0,0" Click="Scope_Click"/>
+                        </StackPanel>
+                    </Border>
 
-                    <Button Content="Разгрузить сеть" DockPanel.Dock="Right" Margin="9,0,0,0"
+                    <Button Content="Ускорить" DockPanel.Dock="Right" Margin="9,0,0,0" MinWidth="120"
                             Style="{StaticResource BtnAccent}"
-                            ToolTip="Освободить канал для выбранного приложения"
+                            ToolTip="Освободить память и интернет-канал"
                             Click="Boost_Click"/>
                     <Button Content="Ремонт сети" DockPanel.Dock="Right" Margin="9,0,0,0"
                             Style="{StaticResource Btn}" Click="Repair_Click"/>
-                    <Button Content="Экспорт" DockPanel.Dock="Right" Margin="9,0,0,0"
-                            Style="{StaticResource Btn}" Click="Export_Click"/>
-                    <Button Content="Столбцы" DockPanel.Dock="Right" Margin="9,0,0,0"
-                            Style="{StaticResource Btn}" Click="Columns_Click"/>
-                    <Button Content="Обновить" DockPanel.Dock="Right" Margin="14,0,0,0"
-                            Style="{StaticResource Btn}" Click="Refresh_Click"/>
-                    <CheckBox x:Name="AutoRefresh" Content="Авто" DockPanel.Dock="Right"
-                              IsChecked="True" Click="AutoRefresh_Changed" VerticalAlignment="Center"/>
+
+                    <Border Style="{StaticResource Segment}" DockPanel.Dock="Right">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="BtnModeApps" Content="Приложения" Style="{StaticResource TabBtn}" Tag="active"
+                                    Click="ModeApps_Click"/>
+                            <Button x:Name="BtnModeRaw" Content="Соединения" Style="{StaticResource TabBtn}" Tag="inactive"
+                                    Margin="3,0,0,0" ToolTip="Подробный список всех сетевых соединений"
+                                    Click="ModeRaw_Click"/>
+                        </StackPanel>
+                    </Border>
                 </DockPanel>
             </Border>
 
-            <!-- Table -->
-            <Border Grid.Row="1" Style="{StaticResource Card}" ClipToBounds="True">
+            <!-- Extra tools for the detailed (raw) mode only -->
+            <DockPanel x:Name="RawTools" Grid.Row="1" Margin="4,0,0,12" LastChildFill="False" Visibility="Collapsed">
+                <CheckBox x:Name="HideLoopback" Content="Скрыть внутренние (localhost)" IsChecked="True"
+                          VerticalAlignment="Center" Click="Filter_Changed"/>
+                <CheckBox x:Name="GroupByProcess" Content="Группировать по программе" Margin="18,0,0,0"
+                          VerticalAlignment="Center" Click="GroupBy_Changed"/>
+                <CheckBox x:Name="AutoRefresh" Content="Обновлять автоматически" Margin="18,0,0,0"
+                          IsChecked="True" VerticalAlignment="Center" Click="AutoRefresh_Changed"/>
+
+                <Button Content="Экспорт" DockPanel.Dock="Right" Margin="9,0,0,0"
+                        Style="{StaticResource Btn}" Click="Export_Click"/>
+                <Button Content="Столбцы" DockPanel.Dock="Right" Margin="9,0,0,0"
+                        Style="{StaticResource Btn}" Click="Columns_Click"/>
+                <Button Content="Обновить" DockPanel.Dock="Right"
+                        Style="{StaticResource Btn}" Click="Refresh_Click"/>
+            </DockPanel>
+
+            <!-- ===== Simple mode: one row per application + details ===== -->
+            <Grid x:Name="AppsPane" Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="14"/>
+                    <ColumnDefinition Width="370"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource Card}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Column captions -->
+                        <Border BorderBrush="{DynamicResource BorderBrush2}" BorderThickness="0,0,0,1" Padding="20,10,24,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="96"/>
+                                    <ColumnDefinition Width="96"/>
+                                    <ColumnDefinition Width="96"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="ПРИЛОЖЕНИЕ" Style="{StaticResource Caption}"/>
+                                <TextBlock Grid.Column="1" Text="↓ ПРИЁМ" Style="{StaticResource Caption}" TextAlignment="Right"/>
+                                <TextBlock Grid.Column="2" Text="↑ ОТДАЧА" Style="{StaticResource Caption}" TextAlignment="Right"/>
+                                <TextBlock Grid.Column="3" Text="ЗА СЕАНС" Style="{StaticResource Caption}" TextAlignment="Right"
+                                           ToolTip="Сколько приложение скачало и отправило с момента запуска NetOptimizer"/>
+                            </Grid>
+                        </Border>
+
+                        <ListBox x:Name="AppList" Grid.Row="1" Style="{StaticResource AppList}"
+                                 ItemContainerStyle="{StaticResource AppListItem}"
+                                 SelectionChanged="AppList_SelectionChanged"
+                                 MouseDoubleClick="AppList_DoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="38"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="96"/>
+                                            <ColumnDefinition Width="96"/>
+                                            <ColumnDefinition Width="96"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <Image Source="{Binding Icon}" Width="24" Height="24" HorizontalAlignment="Left"
+                                               VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="340" Margin="0,0,8,0"/>
+                                                <Border Style="{StaticResource Badge}" Background="{DynamicResource SuspiciousBg}"
+                                                        Visibility="{Binding Suspicious, Converter={StaticResource BoolToVis}}"
+                                                        ToolTip="Программа запущена из временной папки или загрузок и выходит в интернет">
+                                                    <TextBlock Text="Подозрительное" FontSize="11" Foreground="{DynamicResource DangerBrush}"/>
+                                                </Border>
+                                                <Border Style="{StaticResource Badge}" Background="{DynamicResource WarnSoft}"
+                                                        Visibility="{Binding Unsigned, Converter={StaticResource BoolToVis}}"
+                                                        ToolTip="У файла программы нет цифровой подписи издателя">
+                                                    <TextBlock Text="Без подписи" FontSize="11" Foreground="{DynamicResource WarnBrush}"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Activity}" Style="{StaticResource Muted}" FontSize="12"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Column="2" Text="{Binding DownRateText}" Style="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource OkBrush}" TextAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding UpRateText}" Style="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource AccentBrush2}" TextAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding TotalText}" Style="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource FgBrush}" TextAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Ускорить это приложение" Click="AppBoost_Click"/>
+                                    <MenuItem Header="Показать все соединения" Click="AppShowConnections_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="Запретить доступ в интернет" Click="AppBlock_Click"/>
+                                    <MenuItem Header="Разрешить доступ в интернет" Click="AppUnblock_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="Приостановить" Click="AppSuspend_Click"/>
+                                    <MenuItem Header="Возобновить" Click="AppResume_Click"/>
+                                    <MenuItem Header="Завершить" Click="AppKill_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="Открыть папку программы" Click="AppOpenLocation_Click"/>
+                                    <MenuItem Header="Доверять / не доверять" Click="AppTrust_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+
+                        <TextBlock x:Name="AppsEmpty" Grid.Row="1" Visibility="Collapsed"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                                   Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="360"
+                                   Text="Сейчас ни одно приложение не выходит в интернет."/>
+                    </Grid>
+                </Border>
+
+                <!-- Details -->
+                <Border Grid.Column="2" Style="{StaticResource Card}">
+                    <Grid>
+                        <TextBlock x:Name="DetailsEmpty" Margin="28" VerticalAlignment="Center" TextAlignment="Center"
+                                   TextWrapping="Wrap" Style="{StaticResource Muted}"
+                                   Text="Выберите приложение, чтобы увидеть, с какими серверами оно связано и что с ним можно сделать."/>
+
+                        <ScrollViewer x:Name="DetailsPanel" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                            <StackPanel Margin="20,18,20,20">
+                                <DockPanel Margin="0,0,0,12">
+                                    <Image Source="{Binding Icon}" Width="32" Height="32" VerticalAlignment="Top"
+                                           Margin="0,2,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Muted}" FontSize="12"
+                                                   TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </DockPanel>
+
+                                <TextBlock x:Name="DetailServices" Style="{StaticResource Muted}" FontSize="12"
+                                           TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <TextBlock x:Name="DetailPath" Text="{Binding ProcessPath}" Style="{StaticResource Mono}"
+                                           FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
+                                <!-- Speed -->
+                                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="14,10" Margin="0,0,0,16">
+                                    <UniformGrid Columns="3">
+                                        <StackPanel>
+                                            <TextBlock Text="ПРИЁМ" Style="{StaticResource Caption}"/>
+                                            <TextBlock Text="{Binding DownRateText}" Foreground="{DynamicResource OkBrush}"
+                                                       FontSize="14" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock Text="ОТДАЧА" Style="{StaticResource Caption}"/>
+                                            <TextBlock Text="{Binding UpRateText}" Foreground="{DynamicResource AccentBrush2}"
+                                                       FontSize="14" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock Text="ЗА СЕАНС" Style="{StaticResource Caption}"/>
+                                            <TextBlock Text="{Binding TotalText}" FontSize="14" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                    </UniformGrid>
+                                </Border>
+
+                                <!-- Actions -->
+                                <TextBlock Text="ДЕЙСТВИЯ" Style="{StaticResource Caption}" Margin="0,0,0,9"/>
+                                <Button Content="Ускорить это приложение" Style="{StaticResource BtnAccent}"
+                                        HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="AppBoost_Click"/>
+                                <UniformGrid Columns="2">
+                                    <Button Content="Запретить интернет" Style="{StaticResource Btn}" MinWidth="0"
+                                            Margin="0,0,4,8" Click="AppBlock_Click"
+                                            ToolTip="Правило брандмауэра Windows: программа не сможет выходить в сеть"/>
+                                    <Button Content="Разрешить снова" Style="{StaticResource Btn}" MinWidth="0"
+                                            Margin="4,0,0,8" Click="AppUnblock_Click"/>
+                                    <Button x:Name="BtnAppSuspend" Content="Приостановить" Style="{StaticResource Btn}" MinWidth="0"
+                                            Margin="0,0,4,8" Click="AppSuspend_Click"/>
+                                    <Button Content="Возобновить" Style="{StaticResource Btn}" MinWidth="0"
+                                            Margin="4,0,0,8" Click="AppResume_Click"/>
+                                    <Button Content="Открыть папку" Style="{StaticResource Btn}" MinWidth="0"
+                                            Margin="0,0,4,8" Click="AppOpenLocation_Click"/>
+                                    <Button x:Name="BtnAppTrust" Content="Доверять" Style="{StaticResource Btn}" MinWidth="0"
+                                            Margin="4,0,0,8" Click="AppTrust_Click"
+                                            ToolTip="Доверенные программы не помечаются как подозрительные"/>
+                                </UniformGrid>
+                                <Button Content="Завершить приложение" Style="{StaticResource BtnDanger}"
+                                        HorizontalAlignment="Stretch" Margin="0,0,0,22" Click="AppKill_Click"/>
+                                <!-- Servers -->
+                                <DockPanel Margin="0,0,0,8" LastChildFill="False">
+                                    <TextBlock Text="С КЕМ СВЯЗАНО" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
+                                    <Button x:Name="BtnCountries" DockPanel.Dock="Right" Content="Определить страны"
+                                            Style="{StaticResource TabBtn}" FontSize="12" Click="AppCountries_Click"
+                                            ToolTip="Запросить страну каждого сервера у сервиса ipwho.is"/>
+                                </DockPanel>
+                                <ItemsControl x:Name="RemoteList" Margin="0,0,0,6">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding Address}"/>
+                                                    <TextBlock Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="11.5"/>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding Country}" Style="{StaticResource Muted}"
+                                                           FontSize="12" VerticalAlignment="Top" Margin="10,1,0,0"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock x:Name="RemoteEmpty" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"
+                                           Margin="0,0,0,6" Text="Сейчас ни с одним сервером не связано."/>
+                                <TextBlock x:Name="ListeningText" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"
+                                           Margin="0,0,0,6"/>
+
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ===== Detailed mode: every connection ===== -->
+            <Border x:Name="RawPane" Grid.Row="2" Style="{StaticResource Card}" ClipToBounds="True" Visibility="Collapsed">
                 <DataGrid x:Name="ConnGrid" Margin="0,0,0,4"
                           Style="{StaticResource Dg}" RowStyle="{StaticResource DgRow}"
                           AutoGenerateColumns="False" IsReadOnly="True"
@@ -104,22 +337,21 @@
                           PreviewMouseRightButtonDown="ConnGrid_RightClick"
                           PreviewKeyDown="ConnGrid_KeyDown">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="ПРОТОКОЛ" Binding="{Binding Protocol}" Width="86"/>
-
-                        <DataGridTemplateColumn Header="ПРОЦЕСС" Width="190">
+                        <DataGridTemplateColumn Header="ПРОГРАММА" Width="200" SortMemberPath="ProcessName">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" ToolTip="{Binding ProcessPath}">
-                                        <Image Source="{Binding Icon}" Width="15" Height="15"
+                                        <Image Source="{Binding Icon}" Width="16" Height="16"
                                                Margin="0,0,9,0" SnapsToDevicePixels="True"
                                                RenderOptions.BitmapScalingMode="HighQuality"/>
-                                        <TextBlock Text="{Binding ProcessName}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding ProcessName}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="ПРОГРАММА / СЛУЖБА" Width="190">
+                        <DataGridTemplateColumn Header="ОПИСАНИЕ" Width="190" SortMemberPath="Description">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis"
@@ -129,35 +361,53 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="↓ ПРИЁМ" Width="92" SortMemberPath="DownloadRate">
+                        <DataGridTemplateColumn Header="СЕРВЕР" Width="200" SortMemberPath="RemoteEndpoint">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding DownloadRateText}" Style="{StaticResource Mono}"
-                                               Foreground="{DynamicResource OkBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding RemoteEndpoint}" Style="{StaticResource Mono}"
+                                               Foreground="{DynamicResource FgBrush}" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding RemoteEndpoint}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="↑ ОТДАЧА" Width="92" SortMemberPath="UploadRate">
+                        <DataGridTemplateColumn Header="НАЗНАЧЕНИЕ" Width="170" SortMemberPath="ServiceText">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding UploadRateText}" Style="{StaticResource Mono}"
-                                               Foreground="{DynamicResource AccentBrush2}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ServiceText}" Foreground="{DynamicResource MutedBrush}"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="ОБЪЁМ" Width="92" SortMemberPath="TotalBytes">
+                        <DataGridTextColumn Header="ИМЯ СЕРВЕРА" Binding="{Binding RemoteHost}" Width="160"/>
+
+                        <DataGridTemplateColumn Header="СОСТОЯНИЕ" Width="150" SortMemberPath="StateText">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding TotalText}" Style="{StaticResource Mono}"
-                                               ToolTip="Скачано и отдано с момента запуска программы"
-                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding StateText}" VerticalAlignment="Center" ToolTip="{Binding State}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding State}" Value="ESTABLISHED">
+                                                        <Setter Property="Foreground" Value="{DynamicResource OkBrush}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding State}" Value="LISTENING">
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="PID" Width="66" SortMemberPath="Pid">
+                        <!-- Technical columns: hidden by default, enabled via «Столбцы». -->
+                        <DataGridTextColumn Header="ПРОТОКОЛ" Binding="{Binding Protocol}" Width="86" Visibility="Collapsed"/>
+
+                        <DataGridTemplateColumn Header="PID" Width="70" SortMemberPath="Pid" Visibility="Collapsed">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Pid}" Style="{StaticResource Mono}" VerticalAlignment="Center"/>
@@ -165,7 +415,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="ЛОКАЛЬНЫЙ АДРЕС" Width="170" SortMemberPath="LocalEndpoint">
+                        <DataGridTemplateColumn Header="ЛОКАЛЬНЫЙ АДРЕС" Width="170" SortMemberPath="LocalEndpoint" Visibility="Collapsed">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding LocalEndpoint}" Style="{StaticResource Mono}" VerticalAlignment="Center"/>
@@ -173,19 +423,9 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="УДАЛЁННЫЙ АДРЕС" Width="170" SortMemberPath="RemoteEndpoint">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding RemoteEndpoint}" Style="{StaticResource Mono}"
-                                               Foreground="{DynamicResource FgBrush}" VerticalAlignment="Center"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="СТРАНА" Binding="{Binding Country}" Width="140" Visibility="Collapsed"/>
 
-                        <DataGridTextColumn Header="ХОСТ" Binding="{Binding RemoteHost}" Width="160"/>
-                        <DataGridTextColumn Header="СТРАНА" Binding="{Binding Country}" Width="140"/>
-
-                        <DataGridTemplateColumn Header="ПОДПИСЬ" Width="110" SortMemberPath="Signature">
+                        <DataGridTemplateColumn Header="ПОДПИСЬ" Width="110" SortMemberPath="Signature" Visibility="Collapsed">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Signature}" VerticalAlignment="Center">
@@ -204,23 +444,20 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="СОСТОЯНИЕ" Width="*" SortMemberPath="State">
+                        <DataGridTemplateColumn Header="↓ ПРИЁМ ПРОЦЕССА" Width="130" SortMemberPath="DownloadRate" Visibility="Collapsed">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding State}" VerticalAlignment="Center">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Mono}">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding State}" Value="ESTABLISHED">
-                                                        <Setter Property="Foreground" Value="{DynamicResource OkBrush}"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding State}" Value="LISTENING">
-                                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
+                                    <TextBlock Text="{Binding DownloadRateText}" Style="{StaticResource Mono}"
+                                               Foreground="{DynamicResource OkBrush}" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="↑ ОТДАЧА ПРОЦЕССА" Width="130" SortMemberPath="UploadRate" Visibility="Collapsed">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding UploadRateText}" Style="{StaticResource Mono}"
+                                               Foreground="{DynamicResource AccentBrush2}" VerticalAlignment="Center"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -244,8 +481,8 @@
                             <MenuItem Header="Заблокировать в брандмауэре" Click="Block_Click"/>
                             <MenuItem Header="Разблокировать в брандмауэре" Click="Unblock_Click"/>
                             <Separator/>
-                            <MenuItem Header="Определить хост (обратный DNS)" Click="Resolve_Click"/>
-                            <MenuItem Header="Определить страну (GeoIP)" Click="GeoIp_Click"/>
+                            <MenuItem Header="Определить имя сервера" Click="Resolve_Click"/>
+                            <MenuItem Header="Определить страну" Click="GeoIp_Click"/>
                             <MenuItem Header="Добавить процесс в доверенные" Click="Trust_Click"/>
                             <MenuItem Header="Убрать из доверенных" Click="Untrust_Click"/>
                             <Separator/>
@@ -286,7 +523,7 @@
             </Border>
 
             <!-- Status line -->
-            <DockPanel Grid.Row="2" Margin="4,12,4,0" LastChildFill="False">
+            <DockPanel Grid.Row="3" Margin="4,12,4,0" LastChildFill="False">
                 <TextBlock x:Name="StatusText" Text="Готово" Style="{StaticResource Mono}"/>
                 <TextBlock x:Name="CountText" DockPanel.Dock="Right" Style="{StaticResource Mono}"/>
             </DockPanel>
@@ -298,13 +535,12 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Style="{StaticResource Card}" Padding="14,11" Margin="0,0,0,14">
                 <DockPanel LastChildFill="False">
-                    <Border VerticalAlignment="Center" Background="{DynamicResource SurfaceBrush}"
-                            CornerRadius="11" BorderBrush="{DynamicResource BorderBrush2}"
-                            BorderThickness="1" Padding="3">
+                    <Border Style="{StaticResource Segment}">
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="BtnLogSystem"   Content="Система"      Style="{StaticResource TabBtn}" Tag="active"   Click="LogSource_Click"/>
                             <Button x:Name="BtnLogApp"      Content="Приложения"   Style="{StaticResource TabBtn}" Tag="inactive" Margin="3,0,0,0" Click="LogSource_Click"/>
@@ -314,9 +550,13 @@
 
                     <CheckBox x:Name="LogOnlyErrors" Content="Только ошибки и предупреждения" Margin="18,0,0,0"
                               IsChecked="True" VerticalAlignment="Center" Click="LogOnlyErrors_Changed"/>
+                    <CheckBox x:Name="LogHideHarmless" Content="Скрыть безвредные" Margin="18,0,0,0"
+                              IsChecked="True" VerticalAlignment="Center" Click="LogHideHarmless_Changed"
+                              ToolTip="Не показывать известный безвредный «шум», который Windows пишет постоянно"/>
 
                     <Button Content="Обновить" DockPanel.Dock="Right" Margin="9,0,0,0" Style="{StaticResource Btn}" Click="RefreshLog_Click"/>
                     <TextBox x:Name="LogSearch" Width="240" DockPanel.Dock="Right" Style="{StaticResource SearchBox}"
+                             Tag="Поиск в журнале"
                              TextChanged="LogSearch_TextChanged"/>
                 </DockPanel>
             </Border>
@@ -326,9 +566,10 @@
                           Style="{StaticResource Dg}" RowStyle="{StaticResource LogRow}"
                           AutoGenerateColumns="False" IsReadOnly="True"
                           CanUserAddRows="False" CanUserResizeRows="False"
-                          SelectionMode="Single" HeadersVisibility="Column">
+                          SelectionMode="Single" HeadersVisibility="Column"
+                          SelectionChanged="LogGrid_SelectionChanged">
                     <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="ДАТА И ВРЕМЯ" Width="170" SortMemberPath="TimeText">
+                        <DataGridTemplateColumn Header="ДАТА И ВРЕМЯ" Width="170" SortMemberPath="Time">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding TimeText}" Style="{StaticResource Mono}" VerticalAlignment="Center"/>
@@ -336,7 +577,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="УРОВЕНЬ" Width="150" SortMemberPath="Level">
+                        <DataGridTemplateColumn Header="УРОВЕНЬ" Width="140" SortMemberPath="Level">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Level}" FontWeight="SemiBold" VerticalAlignment="Center">
@@ -358,14 +599,40 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTextColumn Header="ИСТОЧНИК" Binding="{Binding Source}" Width="210"/>
-                        <DataGridTextColumn Header="ID" Binding="{Binding EventId}" Width="74"/>
-                        <DataGridTextColumn Header="СООБЩЕНИЕ" Binding="{Binding Message}" Width="*"/>
+                        <DataGridTemplateColumn Header="ЧТО ПРОИЗОШЛО" Width="*" SortMemberPath="Summary">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Summary}" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="ИСТОЧНИК" Width="200" SortMemberPath="Source">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Source}" Foreground="{DynamicResource MutedBrush}"
+                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                               ToolTip="{Binding Source}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="КОД" Binding="{Binding EventId}" Width="70"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </Border>
 
-            <DockPanel Grid.Row="2" Margin="4,12,4,0" LastChildFill="False">
+            <!-- Full text of the selected event -->
+            <Border x:Name="LogDetails" Grid.Row="2" Style="{StaticResource Card}" Padding="18,14"
+                    Margin="0,14,0,0" Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock x:Name="LogDetailTitle" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="LogDetailMeta" Style="{StaticResource Mono}" FontSize="11" Margin="0,0,0,8"/>
+                    <TextBox x:Name="LogDetailText" Style="{StaticResource ConsoleBox}" MaxHeight="160"
+                             TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                </StackPanel>
+            </Border>
+
+            <DockPanel Grid.Row="3" Margin="4,12,4,0" LastChildFill="False">
                 <TextBlock x:Name="LogStatus" Text="Откройте вкладку, чтобы загрузить журнал."
                            Style="{StaticResource Mono}"/>
             </DockPanel>
@@ -383,9 +650,7 @@
 
             <Border Grid.Row="0" Style="{StaticResource Card}" Padding="14,11" Margin="0,0,0,14">
                 <DockPanel LastChildFill="False">
-                    <Border VerticalAlignment="Center" Background="{DynamicResource SurfaceBrush}"
-                            CornerRadius="11" BorderBrush="{DynamicResource BorderBrush2}"
-                            BorderThickness="1" Padding="3">
+                    <Border Style="{StaticResource Segment}">
                         <StackPanel x:Name="PeriodPanel" Orientation="Horizontal">
                             <Button Content="Сессия"   CommandParameter="0"  Style="{StaticResource TabBtn}" Tag="active"   Click="Period_Click"/>
                             <Button Content="Сегодня"  CommandParameter="1"  Style="{StaticResource TabBtn}" Tag="inactive" Margin="3,0,0,0" Click="Period_Click"/>
@@ -565,14 +830,14 @@
 
                         <DockPanel Margin="0,0,0,22" LastChildFill="False">
                             <TextBlock Text="Настройки" Style="{StaticResource H1}" DockPanel.Dock="Left" VerticalAlignment="Center"/>
-                            <Button Content="✕" DockPanel.Dock="Right" Style="{StaticResource TabBtn}" Click="CloseSettings_Click"/>
+                            <Button Content="✕" DockPanel.Dock="Right" Style="{StaticResource BtnIcon}" ToolTip="Закрыть" Click="CloseSettings_Click"/>
                         </DockPanel>
 
                         <!-- Theme -->
                         <TextBlock Text="ОФОРМЛЕНИЕ" Style="{StaticResource Caption}" Margin="0,0,0,9"/>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
-                            <Button x:Name="BtnDark"  Content="Тёмная"  Style="{StaticResource TabBtn}" Tag="active"   Click="Dark_Click"/>
-                            <Button x:Name="BtnLight" Content="Светлая" Style="{StaticResource TabBtn}" Tag="inactive" Margin="8,0,0,0" Click="Light_Click"/>
+                            <Button x:Name="BtnDark"  Content="Тёмная"  Style="{StaticResource TabBtn}" Tag="active"   Width="110" Click="Dark_Click"/>
+                            <Button x:Name="BtnLight" Content="Светлая" Style="{StaticResource TabBtn}" Tag="inactive" Width="110" Margin="8,0,0,0" Click="Light_Click"/>
                         </StackPanel>
 
                         <!-- Reboot timer -->
@@ -580,12 +845,12 @@
                         <TextBlock TextWrapping="Wrap" Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,10"
                                    Text="После действий, требующих перезагрузки (сброс Winsock, TCP/IP). При «0 сек» программа спросит перед перезагрузкой."/>
                         <WrapPanel x:Name="TimerPanel" Margin="0,0,0,24">
-                            <Button Content="5 мин" CommandParameter="300" Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,7,7" Click="Timer_Click"/>
-                            <Button Content="4 мин" CommandParameter="240" Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,7,7" Click="Timer_Click"/>
-                            <Button Content="3 мин" CommandParameter="180" Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,7,7" Click="Timer_Click"/>
-                            <Button Content="2 мин" CommandParameter="120" Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,7,7" Click="Timer_Click"/>
-                            <Button Content="1 мин" CommandParameter="60"  Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,7,7" Click="Timer_Click"/>
-                            <Button Content="0 сек" CommandParameter="0"   Style="{StaticResource TabBtn}" Tag="inactive" Margin="0,0,7,7" Click="Timer_Click"/>
+                            <Button Content="5 мин" CommandParameter="300" Style="{StaticResource TabBtn}" Tag="inactive" Width="88" Margin="0,0,7,7" Click="Timer_Click"/>
+                            <Button Content="4 мин" CommandParameter="240" Style="{StaticResource TabBtn}" Tag="inactive" Width="88" Margin="0,0,7,7" Click="Timer_Click"/>
+                            <Button Content="3 мин" CommandParameter="180" Style="{StaticResource TabBtn}" Tag="inactive" Width="88" Margin="0,0,7,7" Click="Timer_Click"/>
+                            <Button Content="2 мин" CommandParameter="120" Style="{StaticResource TabBtn}" Tag="inactive" Width="88" Margin="0,0,7,7" Click="Timer_Click"/>
+                            <Button Content="1 мин" CommandParameter="60"  Style="{StaticResource TabBtn}" Tag="inactive" Width="88" Margin="0,0,7,7" Click="Timer_Click"/>
+                            <Button Content="0 сек" CommandParameter="0"   Style="{StaticResource TabBtn}" Tag="inactive" Width="88" Margin="0,0,7,7" Click="Timer_Click"/>
                         </WrapPanel>
 
                         <!-- Update -->

@@ -51,12 +51,18 @@ public sealed class TrafficMonitor : IDisposable
             _session.EnableKernelProvider(KernelTraceEventParser.Keywords.NetworkTCPIP);
 
             var k = _session.Source.Kernel;
-            // Inside handlers we only touch base TraceEvent members (ProcessID, PayloadByName)
-            // so we don't depend on derived property names.
-            k.TcpIpSend += d => Add(_sent, d.ProcessID, GetSize(d));
-            k.TcpIpRecv += d => Add(_recv, d.ProcessID, GetSize(d));
-            k.UdpIpSend += d => Add(_sent, d.ProcessID, GetSize(d));
-            k.UdpIpRecv += d => Add(_recv, d.ProcessID, GetSize(d));
+            // IPv4 and IPv6 arrive as separate events; without the *IPV6 ones
+            // most modern traffic (Google, Cloudflare, Steam CDNs) goes uncounted.
+            // The typed `size` field is read directly: PayloadByName did a name
+            // lookup on every packet, thousands of times a second under load.
+            k.TcpIpSend += d => Add(_sent, d.ProcessID, d.size);
+            k.TcpIpRecv += d => Add(_recv, d.ProcessID, d.size);
+            k.UdpIpSend += d => Add(_sent, d.ProcessID, d.size);
+            k.UdpIpRecv += d => Add(_recv, d.ProcessID, d.size);
+            k.TcpIpSendIPV6 += d => Add(_sent, d.ProcessID, d.size);
+            k.TcpIpRecvIPV6 += d => Add(_recv, d.ProcessID, d.size);
+            k.UdpIpSendIPV6 += d => Add(_sent, d.ProcessID, d.size);
+            k.UdpIpRecvIPV6 += d => Add(_recv, d.ProcessID, d.size);
 
             _thread = new Thread(() =>
             {
@@ -96,23 +102,6 @@ public sealed class TrafficMonitor : IDisposable
             }
         }
         catch { /* nothing to clean up, or no permission — Start() will report it */ }
-    }
-
-    private static int GetSize(TraceEvent d)
-    {
-        try
-        {
-            object? o = d.PayloadByName("size");
-            return o switch
-            {
-                int i => i,
-                uint u => (int)u,
-                long l => (int)l,
-                null => 0,
-                _ => Convert.ToInt32(o)
-            };
-        }
-        catch { return 0; }
     }
 
     private static void Add(ConcurrentDictionary<int, long> d, int pid, int size)

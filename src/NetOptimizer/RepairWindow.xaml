@@ -30,7 +30,7 @@
                     <TextBlock Text="Интернет есть, но приложения выдают ошибки соединения"
                                Style="{StaticResource Muted}" FontSize="12"/>
                 </StackPanel>
-                <Button x:Name="BtnSteamFix" Content="Исправить  ·  сброс Winsock *" DockPanel.Dock="Right"
+                <Button x:Name="BtnSteamFix" Content="Исправить  ·  сброс Winsock *" MinWidth="220" DockPanel.Dock="Right"
                         VerticalAlignment="Center" Style="{StaticResource BtnAccent}" Click="SteamFix_Click"/>
             </DockPanel>
         </Border>
@@ -46,14 +46,14 @@
 
             <TextBlock Grid.Row="0" Text="ОТДЕЛЬНЫЕ ДЕЙСТВИЯ" Style="{StaticResource Caption}" Margin="0,0,0,9"/>
 
-            <WrapPanel Grid.Row="1">
-                <Button x:Name="BtnFlush"    Content="Очистить кэш DNS"    Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Flush_Click"/>
-                <Button x:Name="BtnRenew"    Content="Обновить IP-адрес"   Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Renew_Click"/>
-                <Button x:Name="BtnWinsock"  Content="Сбросить Winsock *"  Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Winsock_Click"/>
-                <Button x:Name="BtnTcpip"    Content="Сбросить TCP/IP *"   Style="{StaticResource Btn}" Margin="0,0,8,8" Click="TcpIp_Click"/>
-                <Button x:Name="BtnFirewall" Content="Сбросить брандмауэр" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Firewall_Click"/>
-                <Button x:Name="BtnFull"     Content="Полный сброс сети *" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="Full_Click"/>
-            </WrapPanel>
+            <UniformGrid Grid.Row="1" Columns="3">
+                <Button x:Name="BtnFlush"    Content="Очистить кэш DNS"    Style="{StaticResource Btn}" MinWidth="0" Margin="0,0,8,8" Click="Flush_Click"/>
+                <Button x:Name="BtnRenew"    Content="Обновить IP-адрес"   Style="{StaticResource Btn}" MinWidth="0" Margin="0,0,8,8" Click="Renew_Click"/>
+                <Button x:Name="BtnWinsock"  Content="Сбросить Winsock *"  Style="{StaticResource Btn}" MinWidth="0" Margin="0,0,0,8" Click="Winsock_Click"/>
+                <Button x:Name="BtnTcpip"    Content="Сбросить TCP/IP *"   Style="{StaticResource Btn}" MinWidth="0" Margin="0,0,8,8" Click="TcpIp_Click"/>
+                <Button x:Name="BtnFirewall" Content="Сбросить брандмауэр" Style="{StaticResource Btn}" MinWidth="0" Margin="0,0,8,8" Click="Firewall_Click"/>
+                <Button x:Name="BtnFull"     Content="Полный сброс сети *" Style="{StaticResource Btn}" MinWidth="0" Margin="0,0,0,8" Click="Full_Click"/>
+            </UniformGrid>
 
             <TextBlock Grid.Row="2" Margin="0,2,0,14" Style="{StaticResource Muted}" FontSize="12"
                        Text="* — потребуется перезагрузка компьютера (по таймеру из настроек)."/>

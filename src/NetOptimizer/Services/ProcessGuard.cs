@@ -68,6 +68,10 @@ public static class ProcessGuard
         !string.IsNullOrEmpty(processName) &&
         (Critical.Contains(processName) || Sensitive.Contains(processName));
 
+    /// <summary>True only for processes whose disruption takes the machine down or stutters the screen.</summary>
+    public static bool IsCritical(string? processName) =>
+        !string.IsNullOrEmpty(processName) && Critical.Contains(processName);
+
     public static string? NameOf(int pid)
     {
         try

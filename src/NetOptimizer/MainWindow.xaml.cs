@@ -43,6 +43,7 @@ public partial class MainWindow : Window
         ConnGrid.ItemsSource = _items;
         _view = CollectionViewSource.GetDefaultView(_items);
         _view.Filter = FilterPredicate;
+        InitApps();
 
         DiagList.ItemsSource = _diagSteps;
         LogGrid.ItemsSource = _logItems;
@@ -192,10 +193,13 @@ public partial class MainWindow : Window
         {
             Reconcile(t.Result);
             ApplyRates();
+            RebuildApps();
             _busy = false;
-            _view.Refresh();
-            StatusText.Text = $"Обновлено: {DateTime.Now:HH:mm:ss}";
-            CountText.Text = $"Показано: {_view.Cast<object>().Count()} из {_items.Count}";
+            if (_rawMode) _view.Refresh();
+            StatusText.Text = _traffic.Available
+                ? $"Обновлено: {DateTime.Now:HH:mm:ss}"
+                : $"Обновлено: {DateTime.Now:HH:mm:ss} · скорость не измеряется — нужен запуск от администратора";
+            UpdateCount();
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
@@ -258,15 +262,13 @@ public partial class MainWindow : Window
     {
         if (obj is not ConnectionInfo c) return false;
 
-        if (HideLoopback.IsChecked == true &&
-            (c.LocalAddress is "127.0.0.1" or "::1" || c.RemoteAddress is "127.0.0.1" or "::1"))
+        if (HideLoopback.IsChecked == true && IsLoopback(c))
             return false;
 
-        if (OnlyActive.IsChecked == true &&
-            !c.State.Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
+        if (_scope == Scope.Online && !AppGroup.IsExternal(c))
             return false;
 
-        if (OnlySuspicious.IsChecked == true && !c.Suspicious)
+        if (_scope == Scope.Suspicious && !c.Suspicious)
             return false;
 
         string q = FilterBox.Text?.Trim() ?? "";
@@ -277,13 +279,23 @@ public partial class MainWindow : Window
             || c.LocalEndpoint.Contains(q, StringComparison.OrdinalIgnoreCase)
             || c.RemoteEndpoint.Contains(q, StringComparison.OrdinalIgnoreCase)
             || c.RemoteHost.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || c.ServiceText.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || c.StateText.Contains(q, StringComparison.OrdinalIgnoreCase)
             || c.State.Contains(q, StringComparison.OrdinalIgnoreCase)
             || c.Pid.ToString().Contains(q);
     }
 
-    private void Filter_Changed(object sender, RoutedEventArgs e) => _view?.Refresh();
+    private static bool IsLoopback(ConnectionInfo c)
+        => c.LocalAddress is "127.0.0.1" or "::1"
+           || (c.RemotePort > 0 && (c.RemoteAddress.StartsWith("127.", StringComparison.Ordinal) || c.RemoteAddress == "::1"));
 
-    private void FilterBox_TextChanged(object sender, TextChangedEventArgs e) => _view?.Refresh();
+    private void Filter_Changed(object sender, RoutedEventArgs e)
+    {
+        _view?.Refresh();
+        UpdateCount();
+    }
+
+    private void FilterBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshFilters();
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => Refresh();
 
@@ -307,9 +319,11 @@ public partial class MainWindow : Window
         Refresh();
     }
 
-    private void Boost_Click(object sender, RoutedEventArgs e)
+    private void Boost_Click(object sender, RoutedEventArgs e) => OpenBoost(null);
+
+    private void OpenBoost(string? preselectProcess)
     {
-        var win = new BoostWindow(_items.ToList()) { Owner = this };
+        var win = new BoostWindow(_items.ToList(), preselectProcess) { Owner = this };
         win.ShowDialog();
         Refresh();
     }
@@ -368,7 +382,11 @@ public partial class MainWindow : Window
 
     private void RefreshLog_Click(object sender, RoutedEventArgs e) => LoadLog();
     private void LogOnlyErrors_Changed(object sender, RoutedEventArgs e) => LoadLog();
-    private void LogSearch_TextChanged(object sender, TextChangedEventArgs e) => _logView?.Refresh();
+    private void LogSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _logView?.Refresh();
+        if (_logLoaded) UpdateLogStatus();
+    }
 
     private void LoadLog()
     {
@@ -383,8 +401,20 @@ public partial class MainWindow : Window
                 _logItems.Clear();
                 foreach (var it in t.Result) _logItems.Add(it);
                 _logView.Refresh();
-                LogStatus.Text = $"Записей: {_logItems.Count} · журнал: {LogDisplayName(logName)} · обновлено {DateTime.Now:HH:mm:ss}";
+                _logLoadedAt = DateTime.Now;
+                UpdateLogStatus();
             }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private DateTime _logLoadedAt;
+
+    private void UpdateLogStatus()
+    {
+        int shown = _logView.Cast<object>().Count();
+        int hidden = _logItems.Count(l => l.Harmless);
+        LogStatus.Text = $"Показано: {shown} из {_logItems.Count}" +
+                         (LogHideHarmless.IsChecked == true && hidden > 0 ? $" (скрыто безвредных: {hidden})" : "") +
+                         $" · журнал: {LogDisplayName(_logName)} · обновлено {_logLoadedAt:HH:mm:ss}";
     }
 
     private static string LogDisplayName(string name) => name switch
@@ -395,12 +425,33 @@ public partial class MainWindow : Window
         _ => name
     };
 
+    private void LogGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LogGrid.SelectedItem is not LogEntry l)
+        {
+            LogDetails.Visibility = Visibility.Collapsed;
+            return;
+        }
+        LogDetails.Visibility = Visibility.Visible;
+        LogDetailTitle.Text = l.Summary;
+        LogDetailMeta.Text = $"{l.TimeText}  ·  {l.Level}  ·  {l.Source}  ·  код {l.EventId}";
+        LogDetailText.Text = l.Message;
+    }
+
+    private void LogHideHarmless_Changed(object sender, RoutedEventArgs e)
+    {
+        _logView.Refresh();
+        if (_logLoaded) UpdateLogStatus();
+    }
+
     private bool LogFilter(object obj)
     {
         if (obj is not LogEntry l) return false;
+        if (LogHideHarmless.IsChecked == true && l.Harmless) return false;
         string q = LogSearch.Text?.Trim() ?? "";
         if (q.Length == 0) return true;
         return l.Source.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || l.Summary.Contains(q, StringComparison.OrdinalIgnoreCase)
             || l.Message.Contains(q, StringComparison.OrdinalIgnoreCase)
             || l.Level.Contains(q, StringComparison.OrdinalIgnoreCase)
             || l.EventId.ToString().Contains(q);
@@ -541,14 +592,18 @@ public partial class MainWindow : Window
     }
 
     private void Kill_Click(object sender, RoutedEventArgs e)
+        => KillProcesses(SelectedMany.Select(c => (c.Pid, c.ProcessName)));
+
+    /// <summary>Guarded, confirmed termination of a set of processes.</summary>
+    private void KillProcesses(IEnumerable<(int Pid, string ProcessName)> processes)
     {
-        var targets = SelectedMany
+        var targets = processes
             .GroupBy(c => c.Pid)
             .Select(g => g.First())
             .ToList();
         if (targets.Count == 0) return;
 
-        var allowed = new List<ConnectionInfo>();
+        var allowed = new List<(int Pid, string ProcessName)>();
         var blocked = new List<string>();
         var warnings = new List<string>();
 
@@ -575,8 +630,11 @@ public partial class MainWindow : Window
 
         if (allowed.Count == 0) return;
 
-        string names = string.Join(", ", allowed.Select(c => $"{c.ProcessName} ({c.Pid})"));
-        string question = $"Завершить процессы?\n\n{names}";
+        string names = allowed.Count <= 6
+            ? string.Join(", ", allowed.Select(c => $"{c.ProcessName} ({c.Pid})"))
+            : $"{string.Join(", ", allowed.Select(c => c.ProcessName).Distinct())} — " +
+              AppGroup.Plural(allowed.Count, "процесс", "процесса", "процессов");
+        string question = $"Завершить?\n\n{names}\n\nНесохранённые данные в этих программах будут потеряны.";
         if (warnings.Count > 0)
             question += "\n\n⚠ " + string.Join("\n⚠ ", warnings.Distinct());
 
@@ -801,12 +859,14 @@ public partial class MainWindow : Window
     /// Space used to suspend every selected process without asking. With a hundred
     /// rows selected that could freeze half the machine on an accidental keypress.
     /// </summary>
-    private void SuspendSelected()
+    private void SuspendSelected() => SuspendProcesses(SelectedMany.Select(c => (c.Pid, c.ProcessName)));
+
+    private void SuspendProcesses(IEnumerable<(int Pid, string ProcessName)> processes)
     {
-        var targets = SelectedMany.GroupBy(c => c.Pid).Select(g => g.First()).ToList();
+        var targets = processes.GroupBy(c => c.Pid).Select(g => g.First()).ToList();
         if (targets.Count == 0) return;
 
-        var allowed = new List<ConnectionInfo>();
+        var allowed = new List<(int Pid, string ProcessName)>();
         var blocked = new List<string>();
         foreach (var c in targets)
         {
@@ -821,10 +881,10 @@ public partial class MainWindow : Window
                 "Действие заблокировано", MessageBoxButton.OK, MessageBoxImage.Stop);
         if (allowed.Count == 0) return;
 
-        string names = string.Join(", ", allowed.Select(c => $"{c.ProcessName} ({c.Pid})"));
+        string names = string.Join(", ", allowed.Select(c => c.ProcessName).Distinct());
         if (MessageBox.Show(
-                $"Приостановить процессы?\n\n{names}\n\nПриостановленная программа перестаёт отвечать, " +
-                "пока вы не возобновите её через контекстное меню.",
+                $"Приостановить {names}?\n\nПриостановленная программа перестаёт отвечать, " +
+                "пока вы не нажмёте «Возобновить».",
                 "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
 
@@ -832,7 +892,7 @@ public partial class MainWindow : Window
         foreach (var c in allowed)
             if (ProcessActions.Suspend(c.Pid).Ok) done++;
 
-        StatusText.Text = $"Приостановлено процессов: {done} (возобновить — в контекстном меню).";
+        StatusText.Text = $"Приостановлено процессов: {done} (вернуть — кнопкой «Возобновить»).";
     }
 
     private void CloseSelectedConnections()

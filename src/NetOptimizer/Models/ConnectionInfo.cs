@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
+using NetOptimizer.Services;
 
 namespace NetOptimizer.Models;
 
@@ -39,8 +40,26 @@ public class ConnectionInfo : INotifyPropertyChanged
     public string State
     {
         get => _state;
-        set { if (_state != value) { _state = value; OnChanged(); } }
+        set { if (_state != value) { _state = value; OnChanged(); Raise(nameof(StateText)); } }
     }
+
+    /// <summary>The TCP state in words: "Установлено" instead of "ESTABLISHED".</summary>
+    public string StateText => Protocol == "UDP"
+        ? "Ожидает данных"
+        : _state switch
+        {
+            "ESTABLISHED" => "Установлено",
+            "LISTENING" => "Ждёт подключений",
+            "SYN_SENT" => "Подключается…",
+            "SYN_RECEIVED" => "Подключается…",
+            "TIME_WAIT" or "FIN_WAIT1" or "FIN_WAIT2" or "CLOSING" or "LAST_ACK" => "Закрывается",
+            "CLOSE_WAIT" => "Закрыто сервером",
+            "CLOSED" or "DELETE_TCB" => "Закрыто",
+            _ => _state
+        };
+
+    /// <summary>Remote port as a service name ("Веб (HTTPS)").</summary>
+    public string ServiceText => RemotePort > 0 ? PortNames.Describe(RemotePort) : "";
 
     private string _remoteHost = "";
     public string RemoteHost

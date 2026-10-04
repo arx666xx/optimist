@@ -5,8 +5,10 @@ using System.Text.Json;
 namespace NetOptimizer.Services;
 
 /// <summary>
-/// Looks up the country of a remote IP on demand via the free ip-api.com service
-/// (no API key; rate-limited to ~45 requests/minute). Results are cached.
+/// Looks up the country of a remote IP on demand via the free ipwho.is service
+/// (no API key, HTTPS). The previous provider was plain HTTP only, which sent the
+/// list of addresses this PC talks to across the network in the clear.
+/// Results are cached.
 /// </summary>
 public static class GeoIpService
 {
@@ -18,24 +20,27 @@ public static class GeoIpService
         if (string.IsNullOrEmpty(ip) || ip is "*" or "0.0.0.0" or "::" or "127.0.0.1" or "::1")
             return "";
 
+        // Link-local IPv6 carries a scope suffix ("fe80::1%12") — never a public host.
+        if (ip.Contains('%')) return "";
+
         if (Cache.TryGetValue(ip, out var cached))
             return cached;
 
         try
         {
-            string json = await Http.GetStringAsync($"http://ip-api.com/json/{ip}?fields=status,country,countryCode");
+            string json = await Http.GetStringAsync($"https://ipwho.is/{ip}?fields=success,country,country_code");
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            string status = root.TryGetProperty("status", out var s) ? (s.GetString() ?? "") : "";
-            if (status != "success")
+            bool ok = root.TryGetProperty("success", out var s) && s.ValueKind == JsonValueKind.True;
+            if (!ok)
             {
                 Cache[ip] = "—";
                 return "—";
             }
 
             string country = root.TryGetProperty("country", out var c) ? (c.GetString() ?? "") : "";
-            string code = root.TryGetProperty("countryCode", out var cc) ? (cc.GetString() ?? "") : "";
+            string code = root.TryGetProperty("country_code", out var cc) ? (cc.GetString() ?? "") : "";
             string result = code.Length == 2 ? $"{FlagEmoji(code)} {country}" : country;
 
             Cache[ip] = result;

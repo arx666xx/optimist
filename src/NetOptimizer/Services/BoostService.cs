@@ -3,97 +3,164 @@ using NetOptimizer.Models;
 
 namespace NetOptimizer.Services;
 
-public sealed record BoostResult(int Raised, int Lowered, int ConnectionsClosed, List<string> Notes);
+public sealed record BoostOptions(
+    int? TargetPid,
+    bool FreeMemory,
+    bool PurgeCache,
+    bool LowerOthers,
+    bool CloseOthersConnections);
+
+public sealed record BoostResult(MemorySnapshot Before, MemorySnapshot After, List<string> Notes);
 
 /// <summary>
-/// Frees the channel for one application.
+/// "Ускорение": frees RAM and, optionally, the network link for one application.
 ///
-/// Honest about what each part does: raising the CPU priority helps the app stay
-/// responsive but does NOT give it more bandwidth — Windows has no per-process
-/// network priority available from user mode. The part that actually helps the
-/// connection is the second one: lowering background apps and closing their
-/// established connections, so they stop competing for the link.
+/// Honest about what each part does:
+///  * memory — trims background programs' working sets and drops the standby
+///    cache (see <see cref="MemoryService"/>); this is what moves the RAM gauge;
+///  * CPU priority — helps the chosen app stay responsive, but does NOT give it
+///    more bandwidth: Windows has no per-process network priority from user mode;
+///  * closing background connections — the part that actually frees the link.
 ///
+/// Every priority it changes is remembered, so "Вернуть как было" restores the
+/// original values instead of flattening everything to Normal.
 /// Processes protected by <see cref="ProcessGuard"/> are never touched.
 /// </summary>
 public static class BoostService
 {
-    public static BoostResult Apply(int targetPid, IReadOnlyList<ConnectionInfo> connections,
-        bool lowerOthers, bool closeOthersConnections)
+    /// <summary>PID → (process start time, priority before we touched it).</summary>
+    private static readonly Dictionary<int, (DateTime Start, ProcessPriorityClass Original)> Changed = new();
+    private static readonly object Gate = new();
+
+    public static bool HasChanges { get { lock (Gate) return Changed.Count > 0; } }
+
+    public static BoostResult Apply(BoostOptions o, IReadOnlyList<ConnectionInfo> connections)
     {
         var notes = new List<string>();
-        int raised = 0, lowered = 0, closed = 0;
+        var before = MemoryService.GetStatus();
 
-        try
+        // The boosted app and every process of the same program (browsers run dozens).
+        var targetPids = new HashSet<int>();
+        string? targetName = null;
+        if (o.TargetPid is int tp)
         {
-            using var p = Process.GetProcessById(targetPid);
-            p.PriorityClass = ProcessPriorityClass.High;
-            raised = 1;
-            notes.Add($"Приоритет «{p.ProcessName}» повышен до «Высокий» (процессор, не сеть).");
+            targetName = ProcessGuard.NameOf(tp);
+            targetPids.Add(tp);
+            if (targetName != null)
+                foreach (var c in connections)
+                    if (c.ProcessName.Equals(targetName, StringComparison.OrdinalIgnoreCase))
+                        targetPids.Add(c.Pid);
         }
-        catch (Exception ex)
+
+        // ---- Priorities ----
+        if (o.TargetPid is int target)
         {
-            notes.Add("Не удалось повысить приоритет выбранного приложения: " + ex.Message);
+            if (SetPriority(target, ProcessPriorityClass.High))
+                notes.Add($"✓ «{targetName}» получил высокий приоритет процессора.");
+            else
+                notes.Add($"✗ Не удалось повысить приоритет «{targetName ?? "PID " + target}».");
         }
 
-        var otherPids = connections
-            .Select(c => c.Pid)
-            .Distinct()
-            .Where(pid => pid != targetPid && pid > 4)
-            .ToList();
-
-        if (lowerOthers)
+        if (o.LowerOthers)
         {
-            foreach (var pid in otherPids)
+            int lowered = 0;
+            foreach (int pid in connections.Select(c => c.Pid).Distinct())
             {
-                try
-                {
-                    using var pr = Process.GetProcessById(pid);
-                    if (ProcessGuard.IsProtected(pr.ProcessName)) continue;
-                    pr.PriorityClass = ProcessPriorityClass.BelowNormal;
-                    lowered++;
-                }
-                catch { /* exited or access denied */ }
+                if (pid <= 4 || targetPids.Contains(pid)) continue;
+                if (ProcessGuard.IsProtected(ProcessGuard.NameOf(pid))) continue;
+                if (SetPriority(pid, ProcessPriorityClass.BelowNormal)) lowered++;
             }
-            notes.Add($"Понижен приоритет у {lowered} фоновых приложений.");
-            if (lowered == 0) notes.Add("Фоновых приложений, которым можно понизить приоритет, не нашлось.");
+            notes.Add(lowered > 0
+                ? $"✓ Фоновым программам понижен приоритет: {lowered}."
+                : "• Фоновых программ, которым можно понизить приоритет, не нашлось.");
         }
 
-        if (closeOthersConnections)
+        // ---- Network ----
+        if (o.CloseOthersConnections)
         {
+            int closed = 0;
             foreach (var c in connections)
             {
-                if (c.Pid == targetPid || c.Pid <= 4) continue;
+                if (c.Pid <= 4 || targetPids.Contains(c.Pid)) continue;
                 if (ProcessGuard.IsProtected(c.ProcessName)) continue;
                 if (c.Protocol != "TCP" || c.IsIPv6) continue;
-                if (!c.State.Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase)) continue;
+                if (c.State != "ESTABLISHED" || !AppGroup.IsExternal(c)) continue;
 
                 if (ProcessActions.CloseConnection(c).Ok) closed++;
             }
-            notes.Add($"Закрыто фоновых соединений: {closed}.");
+            notes.Add($"✓ Закрыто фоновых соединений: {closed}.");
         }
 
-        ActionLog.Action($"Разгрузка сети для PID {targetPid}: понижено приоритетов {lowered}, закрыто соединений {closed}.");
-        return new BoostResult(raised, lowered, closed, notes);
+        // ---- Memory ----
+        if (o.FreeMemory)
+        {
+            int trimmed = MemoryService.TrimWorkingSets(targetPids);
+            notes.Add($"✓ Освобождена память у фоновых программ: {trimmed}.");
+        }
+
+        if (o.PurgeCache)
+        {
+            string? err = MemoryService.PurgeStandbyList();
+            notes.Add(err == null ? "✓ Системный кэш памяти очищен." : "✗ " + err);
+        }
+
+        // Windows updates its counters a moment after the trim.
+        if (o.FreeMemory || o.PurgeCache) Thread.Sleep(800);
+        var after = MemoryService.GetStatus();
+
+        ActionLog.Action($"Ускорение: цель {targetName ?? "—"}, память {before.LoadPercent}% → {after.LoadPercent}%.");
+        return new BoostResult(before, after, notes);
     }
 
-    /// <summary>Restores Normal priority for all non-system processes seen in the list.</summary>
-    public static string ResetPriorities(IReadOnlyList<ConnectionInfo> connections)
+    /// <summary>Puts back every priority this session changed.</summary>
+    public static string RestorePriorities()
     {
-        int n = 0;
-        foreach (var pid in connections.Select(c => c.Pid).Distinct())
+        List<KeyValuePair<int, (DateTime Start, ProcessPriorityClass Original)>> items;
+        lock (Gate)
         {
-            if (pid <= 4) continue;
+            items = Changed.ToList();
+            Changed.Clear();
+        }
+
+        if (items.Count == 0)
+            return "Приоритеты не менялись — возвращать нечего.";
+
+        int restored = 0;
+        foreach (var (pid, saved) in items)
+        {
             try
             {
                 using var p = Process.GetProcessById(pid);
-                if (ProcessGuard.IsProtected(p.ProcessName)) continue;
-                p.PriorityClass = ProcessPriorityClass.Normal;
-                n++;
+                // Same PID but a different start time: the original process is gone.
+                if (p.StartTime != saved.Start) continue;
+                p.PriorityClass = saved.Original;
+                restored++;
             }
-            catch { }
+            catch { /* exited */ }
         }
-        ActionLog.Action($"Приоритеты возвращены к «Обычный» у {n} процессов.");
-        return $"Приоритеты возвращены к «Обычный» у {n} процессов.";
+
+        ActionLog.Action($"Приоритеты возвращены у {restored} процессов.");
+        return $"Приоритеты возвращены как было у {restored} процессов.";
+    }
+
+    private static bool SetPriority(int pid, ProcessPriorityClass priority)
+    {
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            var original = p.PriorityClass;
+            var start = p.StartTime;
+            if (original == priority) return true;
+
+            p.PriorityClass = priority;
+            lock (Gate)
+            {
+                // Keep the very first original if boosted twice (unless the PID was recycled).
+                if (!Changed.TryGetValue(pid, out var e) || e.Start != start)
+                    Changed[pid] = (start, original);
+            }
+            return true;
+        }
+        catch { return false; }
     }
 }

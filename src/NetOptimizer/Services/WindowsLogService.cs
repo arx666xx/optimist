@@ -37,8 +37,8 @@ public static class WindowsLogService
                 try { message = e.Message ?? ""; }
                 catch { message = "(текст события недоступен — отсутствует библиотека сообщений)"; }
 
-                message = message.Replace("\r", " ").Replace("\n", " ").Trim();
-                if (message.Length > 400) message = message.Substring(0, 400) + "…";
+                message = message.Replace("\r\n", "\n").Replace("\r", "\n").Trim();
+                if (message.Length > 4000) message = message.Substring(0, 4000) + "…";
 
                 result.Add(new LogEntry
                 {

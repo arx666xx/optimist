@@ -22,6 +22,16 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # A release build must report the same version as its tag, otherwise the
+      # in-app updater sees the release as "newer" forever and loops.
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v', 'V')
+          "VERSION_ARG=-p:Version=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Version: $v"
+
       - name: Publish single-file exe
         run: >
           dotnet publish src/NetOptimizer/NetOptimizer.csproj
@@ -31,17 +41,31 @@ jobs:
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
           -p:EnableCompressionInSingleFile=true
+          ${{ env.VERSION_ARG }}
           -o publish
+
+      # The in-app updater refuses to install a release that has no checksum,
+      # so publish one alongside the .exe.
+      - name: Compute SHA-256 checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash publish/NetOptimizer.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  NetOptimizer.exe" | Out-File -FilePath publish/NetOptimizer.exe.sha256 -Encoding ascii -NoNewline
+          Write-Host "SHA256: $hash"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: NetOptimizer-win-x64
-          path: publish/NetOptimizer.exe
+          path: |
+            publish/NetOptimizer.exe
+            publish/NetOptimizer.exe.sha256
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/NetOptimizer.exe
+          files: |
+            publish/NetOptimizer.exe
+            publish/NetOptimizer.exe.sha256
           generate_release_notes: true

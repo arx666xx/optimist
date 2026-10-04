@@ -299,17 +299,11 @@ del ""%STAGED%"" >nul 2>&1
 ";
         File.WriteAllText(script, body, new System.Text.UTF8Encoding(false));
 
-        var psi = new ProcessStartInfo("cmd.exe")
+        Process.Start(new ProcessStartInfo("cmd.exe", SettingsService.CmdLine(script, current, staged, backup))
         {
             CreateNoWindow = true,
             UseShellExecute = false
-        };
-        psi.ArgumentList.Add("/c");
-        psi.ArgumentList.Add(script);
-        psi.ArgumentList.Add(current);
-        psi.ArgumentList.Add(staged);
-        psi.ArgumentList.Add(backup);
-        Process.Start(psi);
+        });
 
         Application.Current.Shutdown();
     }

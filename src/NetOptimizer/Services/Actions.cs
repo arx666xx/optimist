@@ -27,12 +27,19 @@ public static class ProcessActions
             return ActionResult.Fail(reason);
         }
 
+        // Windows shell processes are the parents of almost everything the user
+        // launched — taking explorer's tree down would close every open program.
+        // Only an ordinary application gets its children killed along with it.
+        bool tree = verdict == ProcessGuard.Verdict.Allowed;
+
         try
         {
             using var p = Process.GetProcessById(pid);
             string name = p.ProcessName;
-            p.Kill(entireProcessTree: true);
-            ActionLog.Action($"Завершён процесс {name} (PID {pid}) вместе с дочерними.");
+            p.Kill(entireProcessTree: tree);
+            ActionLog.Action(tree
+                ? $"Завершён процесс {name} (PID {pid}) вместе с дочерними."
+                : $"Завершён процесс {name} (PID {pid}) без дочерних.");
             return ActionResult.Success($"Процесс {name} (PID {pid}) завершён.");
         }
         catch (Exception ex)
@@ -160,7 +167,7 @@ public static class FirewallService
         if (string.IsNullOrWhiteSpace(programPath))
             return ActionResult.Fail("Не удалось определить путь к программе.");
 
-        string name = $"{RulePrefix} - {System.IO.Path.GetFileName(programPath)}";
+        string name = RuleName(programPath);
         var outRes = Netsh($"advfirewall firewall add rule name=\"{name} (out)\" dir=out action=block program=\"{programPath}\" enable=yes");
         var inRes = Netsh($"advfirewall firewall add rule name=\"{name} (in)\" dir=in action=block program=\"{programPath}\" enable=yes");
 
@@ -179,12 +186,29 @@ public static class FirewallService
         if (string.IsNullOrWhiteSpace(programPath))
             return ActionResult.Fail("Не удалось определить путь к программе.");
 
-        string name = $"{RulePrefix} - {System.IO.Path.GetFileName(programPath)}";
-        Netsh($"advfirewall firewall delete rule name=\"{name} (out)\"");
-        Netsh($"advfirewall firewall delete rule name=\"{name} (in)\"");
+        // Rules from older versions were named by file name only; remove those too.
+        foreach (string name in new[] { RuleName(programPath), LegacyRuleName(programPath) })
+        {
+            Netsh($"advfirewall firewall delete rule name=\"{name} (out)\" program=\"{programPath}\"");
+            Netsh($"advfirewall firewall delete rule name=\"{name} (in)\" program=\"{programPath}\"");
+        }
         ActionLog.Action($"Снята блокировка в брандмауэре: {programPath}");
         return ActionResult.Success($"Правила блокировки для {System.IO.Path.GetFileName(programPath)} удалены (если существовали).");
     }
+
+    /// <summary>
+    /// Rule name unique per full path: two different "setup.exe" files used to
+    /// share one rule name, so unblocking one silently unblocked the other.
+    /// </summary>
+    private static string RuleName(string programPath)
+    {
+        byte[] hash = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(programPath.ToLowerInvariant()));
+        return $"{RulePrefix} - {System.IO.Path.GetFileName(programPath)} [{Convert.ToHexString(hash, 0, 4)}]";
+    }
+
+    private static string LegacyRuleName(string programPath)
+        => $"{RulePrefix} - {System.IO.Path.GetFileName(programPath)}";
 
     private static ActionResult Netsh(string args)
     {

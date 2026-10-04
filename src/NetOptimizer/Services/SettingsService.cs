@@ -109,26 +109,41 @@ public static class SettingsService
     {
         string exe = Environment.ProcessPath
                      ?? Process.GetCurrentProcess().MainModule!.FileName;
-        string dir = Path.GetDirectoryName(exe)!;
-        string bat = Path.Combine(Path.GetTempPath(), "netoptimizer_uninstall.bat");
+        string localData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetOptimizer");
+        string bat = Path.Combine(Path.GetTempPath(), "netoptimizer_uninstall.cmd");
 
-        string script =
-$@"@echo off
-timeout /t 2 /nobreak >nul
+        // Same rules as the updater script: paths go in as arguments (a .cmd is
+        // read in the OEM code page, so a Cyrillic user name baked into the file
+        // would be mangled), `ping` instead of `timeout` (which fails without a
+        // console), and a bounded retry instead of spinning forever.
+        const string script =
+@"@echo off
+setlocal EnableExtensions
+set ""TARGET=%~1""
+set ""ROAMING=%~2""
+set ""LOCAL=%~3""
+for %%I in (""%TARGET%"") do set ""DIR=%%~dpI""
+
+set /a tries=0
 :retry
-del ""{exe}"" >nul 2>&1
-if exist ""{exe}"" (
-  timeout /t 1 /nobreak >nul
-  goto retry
+ping -n 2 127.0.0.1 >nul
+del ""%TARGET%"" >nul 2>&1
+if exist ""%TARGET%"" (
+  set /a tries+=1
+  if %tries% lss 30 goto retry
 )
-del ""{dir}\netoptimizer_update.bat"" >nul 2>&1
-del ""{dir}\NetOptimizer_new.exe"" >nul 2>&1
-rd /s /q ""{DataDir}"" >nul 2>&1
-del ""%~f0"" >nul 2>&1
-";
-        File.WriteAllText(bat, script);
 
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{bat}\"")
+del ""%DIR%NetOptimizer.old.exe"" >nul 2>&1
+del ""%DIR%netoptimizer_update.bat"" >nul 2>&1
+del ""%DIR%NetOptimizer_new.exe"" >nul 2>&1
+rd /s /q ""%ROAMING%"" >nul 2>&1
+rd /s /q ""%LOCAL%"" >nul 2>&1
+(goto) 2>nul & del ""%~f0""
+";
+        File.WriteAllText(bat, script, new System.Text.UTF8Encoding(false));
+
+        Process.Start(new ProcessStartInfo("cmd.exe", CmdLine(bat, exe, DataDir, localData))
         {
             CreateNoWindow = true,
             UseShellExecute = false
@@ -136,4 +151,14 @@ del ""%~f0"" >nul 2>&1
 
         Application.Current.Shutdown();
     }
+
+    /// <summary>
+    /// Arguments for <c>cmd.exe</c> running a script with quoted parameters.
+    /// Without /s, cmd strips the first and last quote of the line whenever the
+    /// script path itself is quoted (a user name with a space), breaking every
+    /// argument. With /s it always strips exactly that outer pair, so the outer
+    /// pair is added on purpose. Windows paths cannot contain quotes.
+    /// </summary>
+    public static string CmdLine(string script, params string[] args)
+        => "/d /s /c \"\"" + script + "\" " + string.Join(" ", args.Select(a => "\"" + a + "\"")) + "\"";
 }

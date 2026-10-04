@@ -21,6 +21,7 @@
     <SolidColorBrush x:Key="DangerBrush"    Color="#FFD92D4E"/>
     <SolidColorBrush x:Key="WarnBrush"      Color="#FFB4780A"/>
     <SolidColorBrush x:Key="OkBrush"        Color="#FF0E9E63"/>
+    <SolidColorBrush x:Key="WarnSoft"       Color="#22B4780A"/>
     <SolidColorBrush x:Key="SuspiciousBg"   Color="#1FD92D4E"/>
 
     <SolidColorBrush x:Key="BorderBrush2"   Color="#FFDCE3ED"/>
