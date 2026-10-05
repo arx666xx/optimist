@@ -1,14 +1,35 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Threading;
 using NetOptimizer.Services;
 
 namespace NetOptimizer;
 
-public partial class RepairWindow : Window
+/// <summary>
+/// "Ремонт сети" page, hosted in the main window's slide-in panel. The reboot
+/// countdown that used to pop up as its own window is a banner here.
+/// </summary>
+public partial class RepairPanel : UserControl
 {
-    public RepairWindow()
+    private readonly DispatcherTimer _rebootTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private int _remaining;
+
+    /// <summary>Raised when the panel is closed while an automatic reboot was counting down.</summary>
+    public event Action? RebootCancelledByClose;
+
+    public RepairPanel()
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => ThemeHelper.SetTitleBar(this, ThemeService.Current == ThemeService.Dark);
+        _rebootTimer.Tick += (_, _) => RebootTick();
+
+        // Closing the panel must never leave an invisible countdown running —
+        // the PC would restart with nothing on screen saying why.
+        Unloaded += (_, _) =>
+        {
+            if (!_rebootTimer.IsEnabled) return;
+            _rebootTimer.Stop();
+            RebootCancelledByClose?.Invoke();
+        };
     }
 
     private async void RunAction(string confirmText, bool needsReboot, Func<string> action)
@@ -32,12 +53,7 @@ public partial class RepairWindow : Window
             ? "Готово. Требуется перезагрузка."
             : "Готово.";
 
-        if (needsReboot)
-        {
-            int delay = SettingsService.LoadRebootDelaySeconds();
-            var w = new RebootWindow(delay) { Owner = this };
-            w.ShowDialog();
-        }
+        if (needsReboot) StartReboot(SettingsService.LoadRebootDelaySeconds());
     }
 
     private void SetBusy(bool busy)
@@ -50,6 +66,58 @@ public partial class RepairWindow : Window
         BtnFirewall.IsEnabled = !busy;
         BtnFull.IsEnabled = !busy;
     }
+
+    // ---------------- Reboot banner ----------------
+
+    private void StartReboot(int delaySeconds)
+    {
+        RebootBanner.Visibility = Visibility.Visible;
+        _remaining = delaySeconds;
+
+        if (delaySeconds <= 0)
+        {
+            RebootTitle.Text = "Требуется перезагрузка";
+            RebootText.Text = "Чтобы изменения вступили в силу, перезагрузите компьютер.";
+            return;
+        }
+
+        RebootTitle.Text = "Автоматическая перезагрузка";
+        UpdateRebootText();
+        _rebootTimer.Start();
+    }
+
+    private void RebootTick()
+    {
+        _remaining--;
+        if (_remaining > 0)
+        {
+            UpdateRebootText();
+            return;
+        }
+        _rebootTimer.Stop();
+        NetworkRepair.Reboot();
+    }
+
+    private void UpdateRebootText()
+    {
+        var t = TimeSpan.FromSeconds(_remaining);
+        RebootText.Text = $"Компьютер перезагрузится через {t:mm\\:ss}. Сохраните открытые файлы или нажмите «Отмена».";
+    }
+
+    private void RebootNow_Click(object sender, RoutedEventArgs e)
+    {
+        _rebootTimer.Stop();
+        NetworkRepair.Reboot();
+    }
+
+    private void RebootCancel_Click(object sender, RoutedEventArgs e)
+    {
+        _rebootTimer.Stop();
+        RebootBanner.Visibility = Visibility.Collapsed;
+        Hint.Text = "Перезагрузка отменена. Изменения вступят в силу после следующей перезагрузки.";
+    }
+
+    // ---------------- Actions ----------------
 
     private void SteamFix_Click(object sender, RoutedEventArgs e)
         => RunAction(
@@ -89,6 +157,4 @@ public partial class RepairWindow : Window
         if (res == MessageBoxResult.Yes)
             NetworkRepair.Reboot();
     }
-
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

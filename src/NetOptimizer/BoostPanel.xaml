@@ -1,0 +1,151 @@
+<UserControl x:Class="NetOptimizer.BoostPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Margin="24,20,24,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Right margin leaves room for the host's ✕ button. -->
+        <StackPanel Grid.Row="0" Margin="0,0,48,16">
+            <TextBlock Text="Ускорение компьютера" Style="{StaticResource H1}" Margin="0,0,0,6"/>
+            <TextBlock TextWrapping="Wrap" Style="{StaticResource Muted}" FontSize="12"
+                       Text="Освобождает оперативную память и, если выбрать приложение (например игру), отдаёт ему процессор и интернет-канал за счёт фоновых программ. Ничего не удаляется и не закрывается без вашего выбора, системные процессы не затрагиваются."/>
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== Left: memory + what to do ===== -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- RAM gauge -->
+                <Border Grid.Row="0" Style="{StaticResource Card}" Padding="18,14" Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="ОПЕРАТИВНАЯ ПАМЯТЬ" Style="{StaticResource Caption}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="RamPercent" Text="—" FontSize="30" FontWeight="Light"
+                                           Foreground="{DynamicResource AccentBrush}"/>
+                                <TextBlock x:Name="RamUsed" Text="" Style="{StaticResource Muted}"
+                                           VerticalAlignment="Bottom" Margin="12,0,0,7"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel x:Name="ResultPanel" Grid.Column="1" VerticalAlignment="Center"
+                                    HorizontalAlignment="Right" Visibility="Collapsed">
+                            <TextBlock x:Name="ResultMain" FontSize="15" FontWeight="SemiBold" TextAlignment="Right"
+                                       Foreground="{DynamicResource OkBrush}"/>
+                            <TextBlock x:Name="ResultSub" Style="{StaticResource Muted}" FontSize="12" TextAlignment="Right"
+                                       Margin="0,3,0,0"/>
+                        </StackPanel>
+
+                        <ProgressBar x:Name="RamBar" Grid.Row="1" Grid.ColumnSpan="2" Height="8"
+                                     Minimum="0" Maximum="100" Margin="0,12,0,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Options -->
+                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="18,14" Margin="0,0,0,14">
+                    <StackPanel>
+                        <CheckBox x:Name="FreeMemory" IsChecked="True" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Освободить оперативную память" Foreground="{DynamicResource FgBrush}"/>
+                                <TextBlock Text="Фоновые программы отдают неиспользуемую память системе"
+                                           Style="{StaticResource Muted}" FontSize="11.5" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </CheckBox>
+                        <CheckBox x:Name="PurgeCache" IsChecked="True" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Очистить системный кэш памяти" Foreground="{DynamicResource FgBrush}"/>
+                                <TextBlock Text="Полезно перед запуском игры: память станет полностью свободной"
+                                           Style="{StaticResource Muted}" FontSize="11.5" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </CheckBox>
+                        <CheckBox x:Name="LowerOthers" IsChecked="True" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Понизить приоритет фоновых программ" Foreground="{DynamicResource FgBrush}"/>
+                                <TextBlock Text="Процессор в первую очередь достаётся выбранному приложению"
+                                           Style="{StaticResource Muted}" FontSize="11.5" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </CheckBox>
+                        <CheckBox x:Name="CloseOthers" IsChecked="False">
+                            <StackPanel>
+                                <TextBlock Text="Освободить интернет-канал" Foreground="{DynamicResource FgBrush}"/>
+                                <TextBlock Text="Закрыть соединения фоновых программ — загрузки в них прервутся"
+                                           Style="{StaticResource Muted}" FontSize="11.5" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </CheckBox>
+                    </StackPanel>
+                </Border>
+
+                <TextBox x:Name="LogBox" Grid.Row="2" MinHeight="60"
+                         Style="{StaticResource ConsoleBox}" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         Text="Выберите, что сделать, и нажмите «Ускорить»."/>
+            </Grid>
+
+            <!-- ===== Right: optional priority app ===== -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="ПРИЛОЖЕНИЕ В ПРИОРИТЕТЕ (НЕОБЯЗАТЕЛЬНО)"
+                           Style="{StaticResource Caption}" Margin="0,2,0,9"/>
+                <TextBox x:Name="Search" Grid.Row="1" Style="{StaticResource SearchBox}" Margin="0,0,0,9"
+                         Tag="Поиск приложения" TextChanged="Search_TextChanged"/>
+
+                <ListBox x:Name="ProcList" Grid.Row="2">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Image Source="{Binding Icon}" Width="18" Height="18" HorizontalAlignment="Left"/>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Muted}" FontSize="11.5"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Grid>
+
+        <DockPanel Grid.Row="2" Margin="0,16,0,0" LastChildFill="False">
+            <Button x:Name="BtnRestore" Content="Вернуть приоритеты" DockPanel.Dock="Left"
+                    Style="{StaticResource Btn}" Click="Restore_Click"
+                    ToolTip="Вернуть приоритеты процессов, изменённые ускорением"/>
+            <Button x:Name="BtnBoost" Content="Ускорить" DockPanel.Dock="Right" MinWidth="160"
+                    Style="{StaticResource BtnAccent}" Click="Boost_Click"/>
+        </DockPanel>
+    </Grid>
+</UserControl>

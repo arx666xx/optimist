@@ -882,5 +882,25 @@
                 </ScrollViewer>
             </Border>
         </Grid>
+
+        <!-- ============ SLIDE-IN PAGE (Ускорение / Ремонт сети) ============ -->
+        <!-- Same idea as Settings, from the right: the page lives inside this
+             window instead of opening a separate one. -->
+        <Grid x:Name="PanelOverlay" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed" Panel.ZIndex="50">
+            <Border Background="#B0000000" MouseLeftButtonDown="PanelScrim_Click"/>
+            <Border x:Name="PanelFrame" HorizontalAlignment="Right"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush2}" BorderThickness="1,0,0,0">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="PanelSlide"/>
+                </Border.RenderTransform>
+                <Grid>
+                    <ContentControl x:Name="PanelHost" Focusable="False"/>
+                    <Button Content="✕" Style="{StaticResource BtnIcon}" ToolTip="Закрыть (Esc)"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,16,18,0"
+                            Click="ClosePanel_Click"/>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

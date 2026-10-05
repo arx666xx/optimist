@@ -77,6 +77,14 @@ public partial class MainWindow : Window
             _traffic.Dispose();
         };
         SourceInitialized += (_, _) => ThemeHelper.SetTitleBar(this, ThemeService.Current == ThemeService.Dark);
+
+        // Esc closes whichever in-window page is open.
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Escape) return;
+            if (_panelOpen) { ClosePanel(); e.Handled = true; }
+            else if (_settingsOpen) { CloseSettings(); e.Handled = true; }
+        };
     }
 
     private bool _settingsOpen;
@@ -314,19 +322,59 @@ public partial class MainWindow : Window
 
     private void Repair_Click(object sender, RoutedEventArgs e)
     {
-        var win = new RepairWindow { Owner = this };
-        win.ShowDialog();
-        Refresh();
+        var panel = new RepairPanel();
+        panel.RebootCancelledByClose += () =>
+            StatusText.Text = "Автоматическая перезагрузка отменена: панель ремонта закрыта. Перезагрузите компьютер сами.";
+        OpenPanel(panel, 780);
     }
 
     private void Boost_Click(object sender, RoutedEventArgs e) => OpenBoost(null);
 
     private void OpenBoost(string? preselectProcess)
+        => OpenPanel(new BoostPanel(_items.ToList(), preselectProcess), 940);
+
+    // ---------------- Slide-in pages (Ускорение / Ремонт сети) ----------------
+
+    private bool _panelOpen;
+
+    private void OpenPanel(UIElement content, double width)
     {
-        var win = new BoostWindow(_items.ToList(), preselectProcess) { Owner = this };
-        win.ShowDialog();
+        if (_settingsOpen) CloseSettings();
+
+        width = Math.Min(width, Math.Max(480, ActualWidth - 80));
+        PanelFrame.Width = width;
+        PanelHost.Content = content;
+        PanelOverlay.Visibility = Visibility.Visible;
+
+        var anim = new System.Windows.Media.Animation.DoubleAnimation(width, 0, TimeSpan.FromMilliseconds(210))
+        {
+            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+        };
+        PanelSlide.BeginAnimation(TranslateTransform.XProperty, anim);
+        _panelOpen = true;
+    }
+
+    private void ClosePanel()
+    {
+        if (!_panelOpen) return;
+        _panelOpen = false;
+
+        var anim = new System.Windows.Media.Animation.DoubleAnimation(0, PanelFrame.Width, TimeSpan.FromMilliseconds(170))
+        {
+            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseIn }
+        };
+        anim.Completed += (_, _) =>
+        {
+            if (_panelOpen) return; // reopened while sliding out
+            PanelOverlay.Visibility = Visibility.Collapsed;
+            PanelHost.Content = null;  // unloads the page: stops its timers
+        };
+        PanelSlide.BeginAnimation(TranslateTransform.XProperty, anim);
         Refresh();
     }
+
+    private void ClosePanel_Click(object sender, RoutedEventArgs e) => ClosePanel();
+    private void PanelScrim_Click(object sender, MouseButtonEventArgs e) => ClosePanel();
 
     // ---------------- View switching (tabs) ----------------
 

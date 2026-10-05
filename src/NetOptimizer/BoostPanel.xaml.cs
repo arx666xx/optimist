@@ -10,7 +10,11 @@ using NetOptimizer.Services;
 
 namespace NetOptimizer;
 
-public partial class BoostWindow : Window
+/// <summary>
+/// "Ускорение" page. Hosted inside the main window's slide-in panel rather than a
+/// separate window, like Settings.
+/// </summary>
+public partial class BoostPanel : UserControl
 {
     public sealed class ProcItem
     {
@@ -29,10 +33,9 @@ public partial class BoostWindow : Window
     private bool _running;
 
     /// <param name="preselectName">Process name to select up front (from the app details panel).</param>
-    public BoostWindow(IReadOnlyList<ConnectionInfo> connections, string? preselectName = null)
+    public BoostPanel(IReadOnlyList<ConnectionInfo> connections, string? preselectName = null)
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => ThemeHelper.SetTitleBar(this, ThemeService.Current == ThemeService.Dark);
 
         _connections = connections;
 
@@ -84,8 +87,8 @@ public partial class BoostWindow : Window
         ShowRam(MemoryService.GetStatus());
         _ramTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _ramTimer.Tick += (_, _) => { if (!_running) ShowRam(MemoryService.GetStatus()); };
-        _ramTimer.Start();
-        Closed += (_, _) => _ramTimer.Stop();
+        Loaded += (_, _) => _ramTimer.Start();
+        Unloaded += (_, _) => _ramTimer.Stop();
 
         BtnRestore.IsEnabled = BoostService.HasChanges;
     }
@@ -178,6 +181,4 @@ public partial class BoostWindow : Window
         LogBox.Text = await Task.Run(BoostService.RestorePriorities);
         BtnRestore.IsEnabled = BoostService.HasChanges;
     }
-
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }
